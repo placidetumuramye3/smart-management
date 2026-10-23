@@ -1107,6 +1107,61 @@ def _notice_permissions_panel(csrf_token):
     )
 
 
+def _format_notice_audit_details(raw_details):
+    try:
+        details = json.loads(raw_details)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return f"<code class='audit-record-raw'>{escape(raw_details or '')}</code>"
+    if not isinstance(details, dict):
+        return f"<code class='audit-record-raw'>{escape(json.dumps(details, ensure_ascii=False))}</code>"
+
+    labels = {
+        "subject": "Subject",
+        "category": "Category",
+        "recipient_ids": "Recipients",
+        "sensitive": "Sensitive notice",
+        "body_sha256": "Notice content integrity",
+        "status": "Status",
+        "decision": "Decision",
+        "note": "Decision note",
+        "reason": "Revocation reason",
+        "first_approver_id": "First approver account ID",
+        "target_user_name": "Account",
+        "target_user_id": "Account ID",
+        "grants": "Permissions",
+    }
+    fields = []
+    has_target_name = bool(details.get("target_user_name"))
+    for key, value in details.items():
+        if key == "target_user_id" and has_target_name:
+            continue
+        label = labels.get(key, key.replace("_", " ").strip().title())
+        if key == "grants" and isinstance(value, dict):
+            permission_labels = dict(NOTICE_PERMISSION_FIELDS)
+            grants = "".join(
+                f"<span class='audit-permission {'enabled' if enabled else 'disabled'}'>"
+                f"{escape(permission_labels.get(name, name.replace('_', ' ').title()))}: "
+                f"{'Granted' if enabled else 'Not granted'}</span>"
+                for name, enabled in value.items()
+            )
+            rendered = f"<div class='audit-permissions'>{grants}</div>"
+        elif key == "body_sha256":
+            rendered = "Recorded (SHA-256)"
+        elif key == "recipient_ids" and isinstance(value, list):
+            rendered = f"{len(value)} recipient{'s' if len(value) != 1 else ''}"
+        elif isinstance(value, bool):
+            rendered = "Yes" if value else "No"
+        elif isinstance(value, (dict, list)):
+            rendered = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        else:
+            rendered = str(value) if value is not None else "—"
+        fields.append(
+            f"<div class='audit-detail'><strong>{escape(label)}</strong> "
+            f"<span>{escape(rendered) if not (key == 'grants' and isinstance(value, dict)) else rendered}</span></div>"
+        )
+    return "<div class='audit-record-details'>" + "".join(fields) + "</div>"
+
+
 def _notice_audit_panel():
     if current_user.role != "master_admin" and not any(
         _has_notice_permission(current_user, field) for field, _label in NOTICE_PERMISSION_FIELDS
@@ -1119,16 +1174,17 @@ def _notice_audit_panel():
     )
     rows = []
     for event in reversed(records[-200:]):
-        details = escape(event.details)
+        details = _format_notice_audit_details(event.details)
         rows.append(
             f"<tr><td>{escape(event.created_at)}</td><td>{escape(event.actor_name)} ({escape(_role_label(event.actor_role))})</td>"
             f"<td>{escape(event.event_type.replace('_', ' ').title())}</td><td>{escape(event.notice_id or '—')}</td>"
-            f"<td><code>{escape(event.event_hash[:16])}…</code><br><small>{details}</small></td></tr>"
+            f"<td class='audit-record-cell'><code>{escape(event.event_hash[:16])}…</code><br><small>{details}</small></td></tr>"
         )
     audit_rows = "".join(rows) or "<tr><td colspan='5' class='muted'>No official notice actions recorded.</td></tr>"
     return (
         "<section class='panel'><h2>Official Notice audit log</h2>"
         f"<p class='muted'>Notice creation, approvals, publication, revocation, and permission changes are recorded. {chain_status}</p>"
+        "<style>.audit-record-cell{white-space:normal!important;min-width:250px}.audit-record-details{display:grid;gap:5px;min-width:220px;max-width:560px;white-space:normal;overflow-wrap:anywhere}.audit-detail{display:flex;gap:6px;align-items:flex-start}.audit-detail strong{flex:0 0 auto}.audit-permissions{display:grid;gap:3px}.audit-permission{display:inline-block;border-radius:5px;padding:2px 6px}.audit-permission.enabled{background:#e8f6ec;color:#176b37}.audit-permission.disabled{background:#f1f2f4;color:#4b5563}.audit-record-raw{white-space:pre-wrap;overflow-wrap:anywhere}</style>"
         f"<div class='table-responsive'><table class='table'><thead><tr><th>Time</th><th>Verified actor</th><th>Action</th><th>Notice</th><th>Record</th></tr></thead>"
         f"<tbody>{audit_rows}</tbody></table></div></section>"
     )

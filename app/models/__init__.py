@@ -16,14 +16,13 @@ from .academics import Grade, TimetableEntry, DayScheduleEntry, AcademicSubject,
 from .setting import Setting
 from .admission import AdmissionApplicant
 from .student_document import StudentDocument
-from .enrollment import StudentEnrollment
 from .appointment import Appointment
 from .meetings import (StudentGuardian, Meeting, MeetingParticipant, MeetingAttendance,
                        MeetingAgendaItem, MeetingMinutes, MeetingMinutesRevision,
                        MeetingActionItem, MeetingActionComment, MeetingAuditEvent,
-                       MeetingNotificationLog)
+                       MeetingNotificationLog, RoomReservation)
 from .announcement import Announcement
 from .correspondence import Correspondence
 from .activity import ActivityLog
 
-__all__ = ["User","Attendance","PendingCard","FeeTransaction","FeeRequirement","Book","BookLoan","DisciplineCase","SchoolMessage","UserNotification","MessageConversation","MessageParticipant","MessageReport","MessagePermission","MessageAuditEvent","OfficialNoticePermission","OfficialNotice","OfficialNoticeAuditEvent","Assessment","AssessmentQuestion","AssessmentSubmission","AssessmentAttempt","GradingRubric","GradingRubricCriterion","ParentNotificationPreference","LearningMaterial","Grade","TimetableEntry","DayScheduleEntry","AcademicSubject","SyllabusCoverage","LessonPlan","ReportCardApproval","Setting","AdmissionApplicant","StudentDocument","StudentEnrollment","Appointment","StudentGuardian","Meeting","MeetingParticipant","MeetingAttendance","MeetingAgendaItem","MeetingMinutes","MeetingMinutesRevision","MeetingActionItem","MeetingActionComment","MeetingAuditEvent","MeetingNotificationLog","Announcement","Correspondence","ActivityLog"]
+__all__ = ["User","Attendance","PendingCard","FeeTransaction","FeeRequirement","Book","BookLoan","DisciplineCase","SchoolMessage","UserNotification","MessageConversation","MessageParticipant","MessageReport","MessagePermission","MessageAuditEvent","OfficialNoticePermission","OfficialNotice","OfficialNoticeAuditEvent","Assessment","AssessmentQuestion","AssessmentSubmission","AssessmentAttempt","GradingRubric","GradingRubricCriterion","ParentNotificationPreference","LearningMaterial","Grade","TimetableEntry","DayScheduleEntry","AcademicSubject","SyllabusCoverage","LessonPlan","ReportCardApproval","Setting","AdmissionApplicant","StudentDocument","Appointment","StudentGuardian","Meeting","MeetingParticipant","MeetingAttendance","MeetingAgendaItem","MeetingMinutes","MeetingMinutesRevision","MeetingActionItem","MeetingActionComment","MeetingAuditEvent","MeetingNotificationLog","RoomReservation","Announcement","Correspondence","ActivityLog"]

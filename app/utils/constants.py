@@ -45,8 +45,6 @@ def normalize_role(role):
 ROLE_ACCESS = {
     "dashboard": {"master_admin", "teacher", "accountant", "librarian", "discipline", "patron", "matron", "secretary", "parent", "student", "auditor"},
     "students": {"master_admin", "teacher", "librarian", "accountant", "discipline", "patron", "matron", "secretary"},
-    "student_enrollment": {"master_admin", "head_teacher", "secretary"},
-    "classrooms": {"master_admin", "head_teacher", "secretary", "teacher", "parent", "student"},
     "admissions": {"master_admin", "head_teacher", "secretary"},
     "documents": {"master_admin", "head_teacher", "secretary"},
     "parent_contacts": {"master_admin", "head_teacher", "secretary"},

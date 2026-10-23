@@ -67,7 +67,7 @@ def _eligible_parent_ids(student_id=None, class_name=None):
     return {}
 
 
-def _resolve_invitees(actor, payload, student_id, class_name):
+def _resolve_invitees(actor, payload, student_id, class_name, panelist_ids=None):
     mode = str(payload.get("audience_mode", "selected")).strip() or "selected"
     raw_ids = _items(payload, "participant_ids")
     try:
@@ -148,9 +148,16 @@ def _resolve_invitees(actor, payload, student_id, class_name):
     else:
         raise ValueError("Choose an available invitation audience.")
 
+    for user_id in panelist_ids or []:
+        user = db.session.get(User, user_id)
+        if not user or user.role not in OFFICE_ROLES | {"teacher"} | CLASS_SUPPORT_ROLES:
+            raise ValueError("Panelists must be active school staff accounts.")
+        include(user, "panelist")
+
     for name, role in (("chairperson_id", "chairperson"), ("secretary_id", "secretary"),
                        ("minutes_approver_id", "approver")):
-        user_id = _as_int(payload.get(name), name)
+        value = payload.get("panel_moderator_id") if name == "chairperson_id" and payload.get("meeting_type") == "panel_discussion" else payload.get(name)
+        user_id = _as_int(value, name)
         if user_id:
             user = db.session.get(User, user_id)
             if not user or not user.is_active_account:
@@ -161,8 +168,42 @@ def _resolve_invitees(actor, payload, student_id, class_name):
                 raise ValueError(f"Choose an authorized staff member for {role}.")
             include(user, role, student_id)
 
-    include(actor, "organizer", student_id)
+    if actor.id not in invitees:
+        include(actor, "organizer", student_id)
     return list(invitees.values())
+
+
+def _panel_discussion_settings(payload, meeting_type, start, end):
+    if meeting_type != "panel_discussion":
+        return None, [], None
+    start_time = datetime.time.fromisoformat(start)
+    end_time = datetime.time.fromisoformat(end)
+    duration = int((datetime.datetime.combine(datetime.date.today(), end_time)
+                    - datetime.datetime.combine(datetime.date.today(), start_time)).total_seconds() // 60)
+    if duration < 30 or duration > 90:
+        raise ValueError("Panel discussions must run between 30 and 90 minutes.")
+    try:
+        qa_duration = int(payload.get("qa_duration_minutes") or 15)
+    except (TypeError, ValueError):
+        raise ValueError("Choose an audience Q&A duration of 15 to 20 minutes.")
+    if qa_duration < 15 or qa_duration > 20 or qa_duration > duration - 10:
+        raise ValueError("Audience Q&A must run 15 to 20 minutes and leave at least 10 minutes for the welcome and wrap-up.")
+    raw_panelists = _items(payload, "panelist_ids")
+    try:
+        panelist_ids = [int(value) for value in raw_panelists]
+    except (TypeError, ValueError):
+        raise ValueError("Choose three to five valid panelists.")
+    if len(set(panelist_ids)) != len(panelist_ids) or not 3 <= len(panelist_ids) <= 5:
+        raise ValueError("Choose three to five different panelists.")
+    moderator_id = _as_int(payload.get("panel_moderator_id") or payload.get("chairperson_id"), "chairperson_id")
+    if not moderator_id:
+        raise ValueError("Choose an active moderator for the panel discussion.")
+    if moderator_id in panelist_ids:
+        raise ValueError("The moderator must be separate from the three to five panelists.")
+    perspectives = str(payload.get("panel_perspectives") or "").strip()
+    if len(perspectives) > 1000:
+        raise ValueError("Panel perspectives must be 1,000 characters or fewer.")
+    return qa_duration, panelist_ids, perspectives or None
 
 
 def _validate_schedule(payload):
@@ -213,7 +254,11 @@ def create_meeting(actor, payload):
     if class_name and len(class_name) > 100:
         raise ValueError("Choose a valid class.")
     date_value, start, end = _validate_schedule(payload)
-    invitees = _resolve_invitees(actor, payload, student.id if student else None, class_name)
+    qa_duration, panelist_ids, panel_perspectives = _panel_discussion_settings(payload, meeting_type, start, end)
+    invitees = _resolve_invitees(
+        actor, payload, student.id if student else None, class_name,
+        panelist_ids=panelist_ids,
+    )
     if confidentiality == "staff_only" and any(user.role == "parent" for user, _role, _anchor in invitees):
         raise ValueError("Staff-only meetings cannot include parent or guardian participants.")
     if location and len(location) > 160:
@@ -233,12 +278,17 @@ def create_meeting(actor, payload):
         title=title, description=description or None, meeting_type=meeting_type,
         class_name=class_name, student_id=student.id if student else None,
         organizer_id=actor.id,
-        chairperson_id=_as_int(payload.get("chairperson_id"), "chairperson_id"),
+        chairperson_id=_as_int(
+            payload.get("panel_moderator_id") if meeting_type == "panel_discussion" else payload.get("chairperson_id"),
+            "chairperson_id",
+        ),
         secretary_id=_as_int(payload.get("secretary_id"), "secretary_id"),
         minutes_approver_id=_as_int(payload.get("minutes_approver_id"), "minutes_approver_id"),
         scheduled_date=date_value, start_time=start, end_time=end, location=location,
         status=status, approval_status=approval_status,
-        confidentiality=confidentiality, created_at=now, updated_at=now,
+        confidentiality=confidentiality, qa_duration_minutes=qa_duration,
+        panel_perspectives=panel_perspectives,
+        created_at=now, updated_at=now,
     )
     if publish and not meeting.minutes_approver_id:
         approver = actor if actor.role in APPROVER_ROLES else User.query.filter(
@@ -260,6 +310,17 @@ def create_meeting(actor, payload):
     agenda_items = payload.get("agenda_items") or []
     if isinstance(agenda_items, str):
         agenda_items = [item.strip() for item in agenda_items.splitlines() if item.strip()]
+    if meeting_type == "panel_discussion":
+        duration = int((datetime.datetime.combine(datetime.date.today(), datetime.time.fromisoformat(end))
+                        - datetime.datetime.combine(datetime.date.today(), datetime.time.fromisoformat(start))).total_seconds() // 60)
+        curated_minutes = duration - qa_duration - 10
+        agenda_items = [
+            {"title": "Welcome and moderator framing (3 min)", "details": "Moderator welcomes the audience, introduces the topic and panelists, and sets discussion ground rules."},
+            {"title": "Opening remarks (4 min)", "details": "Brief opening perspectives from each panelist; keep remarks concise and conversational."},
+        ] + ([{"title": f"Curated panel conversation ({curated_minutes} min)", "details": "Use open prompts. Panelists should respond to and challenge one another naturally, without separate slide presentations. Invite contrasting professional viewpoints."}] if curated_minutes else []) + agenda_items + [
+            {"title": f"Audience Q&A ({qa_duration} min)", "details": "Reserve this time for audience questions, asked directly or collected through an engagement app."},
+            {"title": "Wrap-up (3 min)", "details": "Moderator summarizes key takeaways and closes the session."},
+        ]
     if not isinstance(agenda_items, list) or len(agenda_items) > 40:
         raise ValueError("Provide no more than 40 agenda items.")
     for position, item in enumerate(agenda_items):
@@ -275,6 +336,7 @@ def create_meeting(actor, payload):
     event = record_meeting_audit(actor, meeting.id, "meeting_created", {
         "title": meeting.title, "meeting_type": meeting.meeting_type,
         "status": meeting.status, "participant_count": len(invitees),
+        "panelist_count": len(panelist_ids), "qa_duration_minutes": qa_duration,
     })
     if meeting.status == "Scheduled":
         _activate_invitation_thread(meeting, actor)

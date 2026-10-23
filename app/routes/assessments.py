@@ -16,9 +16,7 @@ from app.models import (Assessment, AssessmentQuestion, AssessmentSubmission, As
                         GradingRubricCriterion, User, TimetableEntry)
 from app.utils.constants import CLASS_TRADE_LEVEL, PROGRAM_LEVELS, ROLE_ACCESS, TRADES
 from app.utils.decorators import permission_for
-from app.utils.helpers import (guardian_can_access_student, guardian_ids_for_student,
-                               linked_children, now_string, teacher_assignments,
-                               teacher_assigned_classes, teacher_can_access_class)
+from app.utils.helpers import linked_children, now_string, teacher_assignments, teacher_assigned_classes, teacher_can_access_class
 from app.utils.notifications import notify_student_and_parent, notify_users
 from app.utils.rendering import page
 
@@ -140,7 +138,7 @@ def _student_can_access(student, assessment):
         return False
     if student.id == current_user.id:
         return True
-    return current_user.role == "parent" and guardian_can_access_student(current_user.id, student.id)
+    return current_user.role == "parent" and student.parent_id == current_user.id
 
 
 def _assessment_targets_student(assessment, student):
@@ -486,8 +484,7 @@ def assessments():
                 assigned_students = target_students if target_mode == "selected" else User.query.filter_by(
                     role="student", class_name=class_name).all()
                 recipient_ids = {student.id for student in assigned_students}
-                for student in assigned_students:
-                    recipient_ids.update(guardian_ids_for_student(student.id))
+                recipient_ids.update(student.parent_id for student in assigned_students if student.parent_id)
                 notify_users(
                     recipient_ids,
                     "Academics",
@@ -985,7 +982,7 @@ def assessment_submission_file(assessment_id, submission_id):
                 or not _assessment_targets_student(assessment, current_user)):
             abort(403)
     elif current_user.role == "parent":
-        if (not guardian_can_access_student(current_user.id, submission.student_id)
+        if (submission.student.parent_id != current_user.id
                 or not _student_can_access(submission.student, assessment)
                 or not _assessment_targets_student(assessment, submission.student)):
             abort(403)

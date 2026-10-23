@@ -34,9 +34,4 @@ The `/meetings` workspace provides scoped invitations, approval, secure meeting 
 
 Schedule `flask --app run.py send-meeting-reminders` hourly and `flask --app run.py process-meeting-actions` daily to run reminders and overdue-action escalation.
 
-## Enrollment and Integrated-System Status
-
-Student records remain canonical `User` rows. Staff enrollment history and transfer workflows are documented in [Student Enrollment History](docs/student-enrollment-schema.md). The current repository gap assessment, implementation sequence, and verified test count are in [the integrated-system analysis](docs/system-gap-analysis.md).
-
-The `/classrooms` page groups existing subject assignments, reviewed lesson plans, published resources, and assignments. Access follows active enrollment, teacher assignment, and verified guardian relationships; it reuses existing academic records.
 "# smart-management-school" 

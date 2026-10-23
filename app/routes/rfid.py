@@ -20,6 +20,7 @@ from app.services.attendance_service import (
     notify_class_attendance,
     reconcile_daily_absences,
 )
+from app.services.room_booking import check_in_student_for_current_meetings
 
 def rfid_login():
     if request.method == "GET":
@@ -76,6 +77,7 @@ def rfid_login():
         return jsonify(status="pending_registration", uid=uid,
                        message="Card UID read and queued for student registration."), 202
 
+    meeting_checkins = check_in_student_for_current_meetings(student, now=now)
     row = Attendance.query.filter_by(student_id=student.id, day=today).first()
 
     if morning_start <= clock < afternoon_start:
@@ -97,7 +99,9 @@ def rfid_login():
         if clock > late_after:
             reconcile_daily_absences(now=now, exclude_student_ids={student.id})
         db.session.commit()
-        return jsonify(status="success", student=student.full_name, attendance_status=row.status, timestamp=stamp, message=f"{student.full_name}: {row.status} recorded at {stamp}.")
+        return jsonify(status="success", student=student.full_name, attendance_status=row.status,
+                       meeting_checkins=meeting_checkins, timestamp=stamp,
+                       message=f"{student.full_name}: {row.status} recorded at {stamp}.")
 
     if afternoon_start <= clock <= afternoon_end:
         if not row:
@@ -113,10 +117,16 @@ def rfid_login():
         row.afternoon_time = stamp
         reconcile_daily_absences(now=now, exclude_student_ids={student.id})
         db.session.commit()
-        return jsonify(status="success", student=student.full_name, attendance_status=row.status, timestamp=stamp, message=f"{student.full_name}: Afternoon attendance recorded at {stamp}.")
+        return jsonify(status="success", student=student.full_name, attendance_status=row.status,
+                       meeting_checkins=meeting_checkins, timestamp=stamp,
+                       message=f"{student.full_name}: Afternoon attendance recorded at {stamp}.")
 
     reconcile_daily_absences(now=now)
     db.session.commit()
+    if meeting_checkins:
+        return jsonify(status="meeting_checkin", student=student.full_name,
+                       meeting_checkins=meeting_checkins, timestamp=stamp,
+                       message=f"{student.full_name}: checked in to {meeting_checkins} meeting(s) by RFID.")
     return jsonify(status="outside_window", student=student.full_name,
                    message=f"You late record data: Scan outside allowed windows. Morning: {morning_start}-{late_after}; Afternoon: {afternoon_start}-{afternoon_end}."), 403
 

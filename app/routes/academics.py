@@ -15,7 +15,7 @@ from app.extensions import db
 from app.models import User, Attendance, PendingCard, FeeTransaction, Book, DisciplineCase, SchoolMessage, Grade, TimetableEntry, DayScheduleEntry, Setting, AcademicSubject, SyllabusCoverage, LessonPlan, ReportCardApproval
 from app.utils.constants import *
 from app.utils.decorators import role_required
-from app.utils.helpers import get_setting, set_setting, attendance_for_student, linked_children, teacher_assignments, teacher_assigned_classes, guardian_can_access_student
+from app.utils.helpers import get_setting, set_setting, attendance_for_student, linked_children, teacher_assignments, teacher_assigned_classes
 from app.utils.rendering import page
 from app.utils.decorators import permission_for
 
@@ -746,7 +746,7 @@ def get_report_card_data(student_id, year_key):
         abort(404)
     if current_user.role == "student" and student.id != current_user.id:
         abort(403)
-    if current_user.role == "parent" and not guardian_can_access_student(current_user.id, student.id):
+    if current_user.role == "parent" and student.parent_id != current_user.id:
         abort(403)
     query = Grade.query.filter_by(student_id=student.id, is_published=True)
     academic_year = None if year_key == "unassigned" else year_key

@@ -5,7 +5,7 @@ import json
 import secrets
 import textwrap
 
-from flask import abort, flash, redirect, request, send_file, session, url_for
+from flask import abort, current_app, flash, jsonify, redirect, request, Response, send_file, session, url_for
 from flask_login import current_user
 from markupsafe import escape
 
@@ -33,6 +33,12 @@ from app.services.meeting_workflow import (
     submit_meeting_for_approval, submit_minutes, update_action,
     update_meeting, verify_guardian_link, revoke_meeting_participant,
 )
+from app.services.room_booking import (
+    check_in_student_for_current_meetings, current_room_reservations,
+    extend_room_reservation, release_room_reservation, release_unchecked_meeting_rooms,
+    reserve_room, suggested_room_names,
+)
+from app.services.microsoft_calendar import sync_meeting_to_microsoft
 from app.utils.decorators import permission_for
 from app.utils.helpers import guardian_ids_for_student, now_string
 from app.utils.rendering import page
@@ -121,13 +127,24 @@ def _meeting_form(user):
             ("general", "General parents' meeting"), ("class", "Class meeting"),
             ("parent_teacher", "Parent–teacher appointment"), ("disciplinary", "Disciplinary meeting"),
             ("emergency", "Emergency meeting"), ("committee", "Authorized committee"),
+            ("panel_discussion", "Panel discussion"),
         )
+    )
+    moderator_options = "".join(
+        f"<option value='{person.id}'>{escape(person.full_name)} Â· {escape(person.role.replace('_', ' ').title())}</option>"
+        for person in staff if person.role in OFFICE_ROLES | {"teacher"}
+    )
+    panelist_options = "".join(
+        f"<option value='{person.id}'>{escape(person.full_name)} Â· {escape(person.role.replace('_', ' ').title())}</option>"
+        for person in staff if person.role in OFFICE_ROLES | {"teacher", "discipline", "patron", "matron"}
     )
     publish_default = " checked"
     return f"""<details class='panel meeting-create'><summary><strong>Create a meeting</strong><span class='muted ms-2'>Schedule, invite participants, and prepare an agenda</span></summary>
 <form method='post' class='row g-3 mt-2'><input type='hidden' name='action' value='create'>{_csrf_field()}
 <div class='col-md-6'><label class='form-label'>Title</label><input class='form-control' name='title' maxlength='160' required></div>
-<div class='col-md-3'><label class='form-label'>Meeting type</label><select class='form-select' name='meeting_type'>{type_options}</select></div>
+<div class='col-md-3'><label class='form-label'>Meeting type</label><select class='form-select' name='meeting_type' data-meeting-type-select>{type_options}</select></div>
+<div class='col-12 panel-discussion-settings' data-panel-settings hidden><div class='panel panel-format-guide'><h3>Panel discussion format</h3><p class='muted'>A live, unscripted exchange with three to five staff panelists and a separate moderator. Use contrasting perspectives and open prompts instead of separate slide presentations.</p><div class='row g-2'><div class='col-md-6'><label class='form-label'>Panelists (select 3–5)</label><select class='form-select' name='panelist_ids' multiple size='5'>{panelist_options}</select></div><div class='col-md-3'><label class='form-label'>Moderator</label><select class='form-select' name='panel_moderator_id'><option value=''>Choose moderator</option>{moderator_options}</select></div><div class='col-md-3'><label class='form-label'>Audience Q&amp;A</label><select class='form-select' name='qa_duration_minutes'>{''.join(f"<option value='{minutes}'{' selected' if minutes == 15 else ''}>{minutes} minutes</option>" for minutes in range(15, 21))}</select></div></div><p class='small muted mb-0 mt-2'>Total runtime must be 30–90 minutes. The agenda reserves the selected Q&amp;A time at the end.</p></div></div>
+<div class='col-12' data-panel-perspectives hidden><label class='form-label'>Perspectives to bring into the discussion</label><textarea class='form-control' name='panel_perspectives' rows='2' maxlength='1000' placeholder='For example: classroom teaching, student wellbeing, and family perspectives'></textarea></div>
 <div class='col-md-3'><label class='form-label'>Student (optional)</label><select class='form-select' name='student_id'><option value=''>No specific student</option>{student_options}</select></div>
 <div class='col-md-4'><label class='form-label'>Class (optional)</label><select class='form-select' name='class_name'><option value=''>No class scope</option>{class_options}</select></div>
 <div class='col-md-4'><label class='form-label'>Date</label><input class='form-control' type='date' name='scheduled_date' value='{datetime.date.today().isoformat()}' required></div>
@@ -136,14 +153,14 @@ def _meeting_form(user):
 <div class='col-md-4'><label class='form-label'>Room / location</label><input class='form-control' name='location' maxlength='160'></div>
 <div class='col-md-4'><label class='form-label'>Invite audience</label><select class='form-select' name='audience_mode'><option value='selected'>Selected participants</option><option value='guardians'>Verified guardians of selected student</option><option value='class_parents'>Verified guardians in this class</option>{'<option value="all_parents">All active parents / guardians</option>' if user.role in OFFICE_ROLES else ''}<option value='committee'>Authorized committee participants</option></select></div>
 <div class='col-md-4'><label class='form-label'>Participants</label><select class='form-select' name='participant_ids' multiple size='4'>{participant_options}</select><small class='muted'>Select parent/guardian and staff participants for the selected audience.</small></div>
-<div class='col-md-4'><label class='form-label'>Chairperson</label><select class='form-select' name='chairperson_id'><option value=''>Not assigned</option>{''.join(f"<option value='{person.id}'>{escape(person.full_name)}</option>" for person in staff)}</select></div>
+<div class='col-md-4' data-standard-chairperson><label class='form-label'>Chairperson</label><select class='form-select' name='chairperson_id'><option value=''>Not assigned</option>{''.join(f"<option value='{person.id}'>{escape(person.full_name)}</option>" for person in staff)}</select></div>
 <div class='col-md-4'><label class='form-label'>Meeting secretary</label><select class='form-select' name='secretary_id'><option value=''>Not assigned</option>{''.join(f"<option value='{person.id}'>{escape(person.full_name)}</option>" for person in staff)}</select></div>
 <div class='col-md-4'><label class='form-label'>Minutes approver</label><select class='form-select' name='minutes_approver_id'><option value=''>Choose designated approver</option>{approver_options}</select></div>
 <div class='col-md-6'><label class='form-label'>Description</label><textarea class='form-control' name='description' rows='2' maxlength='10000'></textarea></div>
 <div class='col-md-6'><label class='form-label'>Agenda items (one per line)</label><textarea class='form-control' name='agenda_items' rows='2'></textarea></div>
 <div class='col-md-4'><label class='form-label'>Confidentiality</label><select class='form-select' name='confidentiality'><option value='participants'>Invited participants</option><option value='staff_only'>Staff only</option></select></div>
 <div class='col-md-8 d-flex align-items-end'><label><input type='checkbox' name='publish' value='yes'{publish_default}> Publish now or send for approval</label></div>
-<div class='col-12'><button class='btn btn-accent'>Save meeting</button></div></form></details>"""
+<div class='col-12'><button class='btn btn-accent'>Save meeting</button></div></form><script>(() => {{ const form=document.currentScript.previousElementSibling; const type=form.elements.meeting_type; const panel=form.querySelector('[data-panel-settings]'); const perspectives=form.querySelector('[data-panel-perspectives]'); const chair=form.querySelector('[data-standard-chairperson]'); const update=() => {{ const active=type.value==='panel_discussion'; panel.hidden=!active; perspectives.hidden=!active; chair.hidden=active; }}; type.addEventListener('change',update); update(); }})();</script></details>"""
 
 
 def _meeting_card(meeting, viewer):
@@ -169,9 +186,13 @@ def _meeting_card(meeting, viewer):
         response_text = f"{accepted} accepted<br>{pending} awaiting response"
         if viewer.role in OFFICE_ROLES:
             response_text += f"<br>{declined} declined"
+    room_release_note = (
+        f"<p class='text-danger small mb-1'>{escape(meeting.room_release_reason or 'Room released because no attendee checked in.')}</p>"
+        if meeting.room_released_at else ""
+    )
     return (
         f"<article class='panel meeting-tile'><div class='d-flex justify-content-between align-items-start gap-3 flex-wrap'>"
-        f"<div><span class='pill'>{escape(meeting.status)}</span><h3 class='mt-2 mb-1'><a href='{escape(url_for('meeting_detail', meeting_id=meeting.id))}'>{escape(meeting.title)}</a></h3>"
+        f"<div><span class='pill'>{escape(meeting.status)}</span>{room_release_note}<h3 class='mt-2 mb-1'><a href='{escape(url_for('meeting_detail', meeting_id=meeting.id))}'>{escape(meeting.title)}</a></h3>"
         f"<p class='muted mb-0'>{escape(context)} · {escape(meeting.meeting_type.replace('_', ' ').title())} · {escape(meeting.scheduled_date)} · {escape(_format_time(meeting.start_time))}–{escape(_format_time(meeting.end_time))}</p></div>"
         f"<div class='text-end small'>{response_text}</div></div></article>"
     )
@@ -208,6 +229,315 @@ def _calendar_html(meetings, month_value):
     return f"<div class='table-responsive'><table class='table calendar-table'><thead><tr>{day_headers}</tr></thead><tbody>{''.join(weeks)}</tbody></table></div>"
 
 
+def _live_schedule_payload(user):
+    now = datetime.datetime.now()
+    horizon = now + datetime.timedelta(days=7)
+    current, upcoming, known_locations = [], [], set()
+    for meeting in visible_meetings(user):
+        if meeting.status not in {"Scheduled", "Rescheduled"} or meeting.room_released_at:
+            continue
+        location = (meeting.location or "").strip()
+        try:
+            start = datetime.datetime.combine(
+                datetime.date.fromisoformat(meeting.scheduled_date),
+                datetime.time.fromisoformat(meeting.start_time),
+            )
+            end = datetime.datetime.combine(
+                datetime.date.fromisoformat(meeting.scheduled_date),
+                datetime.time.fromisoformat(meeting.end_time),
+            )
+        except (TypeError, ValueError):
+            continue
+        if start > horizon or end <= now:
+            continue
+        if location:
+            known_locations.add(location)
+        participants = [
+            row for row in meeting.participants
+            if row.invitation_status not in {"declined", "revoked"}
+        ]
+        event = {
+            "id": meeting.id,
+            "title": meeting.title,
+            "location": location or "Location to be confirmed",
+            "date": meeting.scheduled_date,
+            "start": meeting.start_time,
+            "end": meeting.end_time,
+            "present": sum(bool(row.attendance and row.attendance.status == "Present") for row in participants),
+            "expected": len(participants),
+        }
+        if start <= now < end:
+            current.append(event)
+        elif start > now:
+            upcoming.append(event)
+    occupied = {event["location"].casefold() for event in current if event["location"] != "Location to be confirmed"}
+    try:
+        configured_limits = current_app.config.get("ROOM_CAPACITY_LIMITS", "{}")
+        configured_limits = json.loads(configured_limits) if isinstance(configured_limits, str) else configured_limits
+        capacity_limits = {
+            str(name).strip().casefold(): int(limit)
+            for name, limit in configured_limits.items()
+            if str(name).strip() and int(limit) > 0
+        }
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+        capacity_limits = {}
+    occupancy_by_room = {}
+    for event in current:
+        if event["location"] != "Location to be confirmed":
+            key = event["location"].casefold()
+            occupancy_by_room[key] = occupancy_by_room.get(key, 0) + event["present"]
+    rooms = [
+        {
+            "name": name,
+            "occupied": name.casefold() in occupied,
+            "present": occupancy_by_room.get(name.casefold(), 0),
+            "capacity": capacity_limits.get(name.casefold()),
+            "over_capacity": (
+                name.casefold() in capacity_limits
+                and occupancy_by_room.get(name.casefold(), 0) > capacity_limits[name.casefold()]
+            ),
+        }
+        for name in sorted(known_locations, key=str.casefold)
+    ]
+    for event in current:
+        capacity = capacity_limits.get(event["location"].casefold())
+        event["capacity"] = capacity
+        event["over_capacity"] = capacity is not None and event["present"] > capacity
+    key = lambda event: (event["date"], event["start"], event["title"].casefold())
+    return {
+        "updated_at": now.strftime("%H:%M:%S"),
+        "rooms": rooms,
+        "current": sorted(current, key=key),
+        "upcoming": sorted(upcoming, key=key)[:12],
+    }
+
+
+def meeting_live_schedule():
+    release_unchecked_meeting_rooms()
+    payload = _live_schedule_payload(current_user)
+    active_reservations = current_room_reservations()
+    rooms_by_name = {room["name"].casefold(): room for room in payload["rooms"]}
+    for booking in active_reservations:
+        name = booking.room_name.strip()
+        key = name.casefold()
+        room = rooms_by_name.setdefault(key, {"name": name, "occupied": False})
+        room["occupied"] = True
+    now = datetime.datetime.now()
+    today_meetings = Meeting.query.filter(
+        Meeting.scheduled_date == now.date().isoformat(),
+        Meeting.status.in_({"Scheduled", "Rescheduled"}),
+        Meeting.location.isnot(None),
+    ).all()
+    for meeting in today_meetings:
+        if meeting.room_released_at:
+            continue
+        try:
+            start = datetime.time.fromisoformat(meeting.start_time)
+            end = datetime.time.fromisoformat(meeting.end_time)
+        except (TypeError, ValueError):
+            continue
+        if start <= now.time() < end and meeting.location.strip():
+            name = meeting.location.strip()
+            room = rooms_by_name.setdefault(name.casefold(), {"name": name, "occupied": False, "present": 0, "capacity": None, "over_capacity": False})
+            room["occupied"] = True
+    payload["rooms"] = sorted(rooms_by_name.values(), key=lambda room: room["name"].casefold())
+    return jsonify(payload)
+
+
+def _room_booking_json(booking):
+    return {
+        "id": booking.id,
+        "room": booking.room_name,
+        "purpose": booking.purpose,
+        "reserved_by": booking.reserved_by.full_name,
+        "starts_at": booking.starts_at.strftime("%Y-%m-%d %H:%M"),
+        "ends_at": booking.ends_at.strftime("%Y-%m-%d %H:%M"),
+        "ends_time": booking.ends_at.strftime("%H:%M"),
+        "can_manage": booking.reserved_by_id == current_user.id or current_user.role in OFFICE_ROLES,
+    }
+
+
+def room_booking_api():
+    if current_user.role == "parent":
+        abort(403)
+    if request.method == "GET":
+        return jsonify({
+            "rooms": suggested_room_names(),
+            "bookings": [_room_booking_json(booking) for booking in current_room_reservations()],
+        })
+    if not _csrf_valid():
+        abort(400)
+    values = request.get_json(silent=True) or request.form
+    action = (values.get("action") or "reserve").strip()
+    try:
+        booking_id = int(values.get("booking_id") or 0)
+    except (TypeError, ValueError):
+        booking_id = 0
+    try:
+        if action == "reserve":
+            booking = reserve_room(
+                current_user, values.get("room"), values.get("purpose", ""),
+                values.get("minutes", 60),
+            )
+            message = f"{booking.room_name} reserved until {booking.ends_at.strftime('%H:%M')}."
+        elif action == "extend":
+            booking = extend_room_reservation(
+                current_user, booking_id, values.get("minutes", 30),
+            )
+            message = f"{booking.room_name} booking extended until {booking.ends_at.strftime('%H:%M')}."
+        elif action == "release":
+            booking = release_room_reservation(current_user, booking_id)
+            message = f"{booking.room_name} released."
+        else:
+            return jsonify({"error": "Choose reserve, extend, or release."}), 400
+    except PermissionError as error:
+        return jsonify({"error": str(error)}), 403
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 409
+    return jsonify({"message": message, "booking": _room_booking_json(booking)})
+
+
+def room_booking_qr():
+    if current_user.role == "parent":
+        abort(403)
+    room_name = request.args.get("room", "").strip()
+    if not room_name or len(room_name) > 160:
+        abort(400)
+    from qrcode import QRCode
+    from qrcode.image.svg import SvgPathImage
+
+    public_base = current_app.config.get("PUBLIC_BASE_URL") or request.url_root.rstrip("/")
+    booking_url = f"{public_base}{url_for('meetings', room=room_name, view='list')}"
+    qr = QRCode(box_size=8, border=4)
+    qr.add_data(booking_url)
+    qr.make(fit=True)
+    image = qr.make_image(image_factory=SvgPathImage)
+    buffer = io.BytesIO()
+    image.save(buffer)
+    return Response(buffer.getvalue(), mimetype="image/svg+xml", headers={"Cache-Control": "private, max-age=300"})
+
+
+def _room_booking_panel(initial_room=""):
+    return f"""<section class='panel room-booking-panel' data-room-booking data-endpoint='{url_for('room_booking_api')}' data-qr-endpoint='{url_for('room_booking_qr')}' data-csrf='{escape(_csrf_token())}'>
+<div class='live-schedule-heading'><div><span class='pill'>TOUCHSCREEN BOOKING</span><h2>Quick room booking</h2></div><p class='muted mb-0'>Reserve a room now, add time, or release it when finished.</p></div>
+<form data-room-booking-form class='quick-booking-form'><div><label class='form-label' for='quick-room-name'>Room</label><input class='form-control touch-control' id='quick-room-name' name='room' list='quick-room-options' maxlength='160' value='{escape(initial_room)}' required placeholder='Select or enter a room'><datalist id='quick-room-options'></datalist><button class='btn btn-outline-secondary mt-2 touch-button' type='button' data-show-room-qr>Show booking QR</button></div>
+<div><label class='form-label' for='quick-room-purpose'>Purpose</label><input class='form-control touch-control' id='quick-room-purpose' name='purpose' maxlength='160' placeholder='Optional'></div>
+<div><label class='form-label' for='quick-room-duration'>Duration</label><select class='form-select touch-control' id='quick-room-duration' name='minutes'><option value='30'>30 minutes</option><option value='60' selected>1 hour</option><option value='90'>1 hour 30 minutes</option><option value='120'>2 hours</option><option value='180'>3 hours</option><option value='240'>4 hours</option></select></div>
+<button class='btn btn-accent touch-button' type='submit'>Reserve now</button></form>
+<div data-room-qr-container class='room-qr-container' hidden><img data-room-qr alt='QR code to open room booking on a mobile device'><p class='muted'>Scan with a phone to open this room in the meeting panel.</p></div>
+<div data-room-booking-message class='booking-message' role='status' aria-live='polite'></div><div data-room-bookings><p class='muted'>Loading active room bookings…</p></div></section>
+<style>.room-qr-container{{display:flex;align-items:center;gap:14px;margin-top:12px}}.room-qr-container[hidden]{{display:none}}.room-qr-container img{{width:150px;height:150px;background:#fff;padding:8px;border-radius:8px}}@media(max-width:800px){{.room-qr-container{{flex-wrap:wrap}}}}</style>
+<script>
+(() => {{
+ const panel = document.querySelector('[data-room-booking]'); if (!panel) return;
+ const form = panel.querySelector('[data-room-booking-form]');
+ const bookingsNode = panel.querySelector('[data-room-bookings]');
+ const roomsNode = panel.querySelector('#quick-room-options');
+ const messageNode = panel.querySelector('[data-room-booking-message]');
+ const qrButton = panel.querySelector('[data-show-room-qr]');
+ const qrContainer = panel.querySelector('[data-room-qr-container]');
+ const qrImage = panel.querySelector('[data-room-qr]');
+ const say = (text, error = false) => {{ messageNode.textContent = text; messageNode.className = 'booking-message' + (error ? ' error' : ''); }};
+ const load = async () => {{
+   try {{
+     const response = await fetch(panel.dataset.endpoint, {{headers: {{'Accept': 'application/json'}}}});
+     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Could not load room bookings.');
+     roomsNode.replaceChildren(...data.rooms.map((name) => {{ const option = document.createElement('option'); option.value = name; return option; }}));
+     if (!data.bookings.length) {{ bookingsNode.replaceChildren(Object.assign(document.createElement('p'), {{className: 'muted', textContent: 'No rooms are currently reserved.'}})); return; }}
+     bookingsNode.replaceChildren(...data.bookings.map((booking) => {{
+       const card = document.createElement('article'); card.className = 'quick-booking-card';
+       const info = document.createElement('div');
+       const title = document.createElement('strong'); title.textContent = booking.room; info.append(title);
+       const detail = document.createElement('p'); detail.className = 'muted'; detail.textContent = booking.purpose + ' · until ' + booking.ends_time + ' · ' + booking.reserved_by; info.append(detail);
+       card.append(info);
+       if (booking.can_manage) {{
+         const controls = document.createElement('div'); controls.className = 'quick-booking-controls';
+         const extend = document.createElement('button'); extend.type = 'button'; extend.className = 'btn btn-outline-success touch-button'; extend.textContent = 'Extend 30 min';
+         extend.addEventListener('click', () => update('extend', booking.id));
+         const release = document.createElement('button'); release.type = 'button'; release.className = 'btn btn-outline-danger touch-button'; release.textContent = 'Release room';
+         release.addEventListener('click', () => update('release', booking.id));
+         controls.append(extend, release); card.append(controls);
+       }}
+       return card;
+     }}));
+   }} catch (error) {{ say(error.message, true); }}
+ }};
+ const update = async (action, bookingId) => {{
+   const payload = action === 'reserve'
+     ? {{action, room: form.elements.room.value, purpose: form.elements.purpose.value, minutes: form.elements.minutes.value}}
+     : {{action, booking_id: bookingId, minutes: 30}};
+   try {{
+     const response = await fetch(panel.dataset.endpoint, {{method: 'POST', headers: {{'Content-Type': 'application/json', 'X-CSRF-Token': panel.dataset.csrf}}, body: JSON.stringify(payload)}});
+     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Room booking could not be updated.');
+     say(data.message); if (action === 'reserve') form.reset(); await load();
+   }} catch (error) {{ say(error.message, true); }}
+ }};
+ qrButton.addEventListener('click', () => {{
+   const room = form.elements.room.value.trim();
+   if (!room) {{ say('Select or enter a room first.', true); return; }}
+   qrImage.src = panel.dataset.qrEndpoint + '?room=' + encodeURIComponent(room);
+   qrContainer.hidden = false;
+ }});
+ form.addEventListener('submit', (event) => {{ event.preventDefault(); update('reserve'); }});
+ load(); window.setInterval(load, 60000);
+}})();
+</script>"""
+
+
+def _live_schedule_panel():
+    return f"""<section class='panel live-schedule' data-live-schedule data-endpoint='{url_for('meeting_live_schedule')}'>
+<div class='live-schedule-heading'><div><span class='pill'>LIVE SCHEDULE</span><h2>Room activity</h2></div><span class='muted'>Updated <time data-live-updated>--:--:--</time> · refreshes every minute</span></div>
+<h3>Room status</h3><div class='room-indicators' data-live-rooms><p class='muted'>Loading room status…</p></div>
+<div class='live-schedule-columns'><div><h3>Happening now</h3><div data-live-current><p class='muted'>Loading current meetings…</p></div></div>
+<div><h3>Upcoming reservations · 7 days</h3><div data-live-upcoming><p class='muted'>Loading upcoming meetings…</p></div></div></div></section>
+<script>
+(() => {{
+  const panel = document.querySelector('[data-live-schedule]');
+  if (!panel) return;
+  const roomsNode = panel.querySelector('[data-live-rooms]');
+  const currentNode = panel.querySelector('[data-live-current]');
+  const upcomingNode = panel.querySelector('[data-live-upcoming]');
+  const updatedNode = panel.querySelector('[data-live-updated]');
+  const message = (text) => {{ const p = document.createElement('p'); p.className = 'muted'; p.textContent = text; return p; }};
+  const eventNode = (event, active) => {{
+    const item = document.createElement('article'); item.className = active ? 'live-event live-event-active' : 'live-event';
+    const title = document.createElement('a'); title.href = '/meetings/' + encodeURIComponent(event.id); title.className = 'live-event-title';
+    title.textContent = event.title; item.append(title);
+    const details = document.createElement('p'); details.className = 'muted';
+    details.textContent = event.date + ' · ' + event.start + '–' + event.end + ' · ' + event.location; item.append(details);
+    const occupancy = document.createElement('span'); occupancy.className = 'live-occupancy';
+    occupancy.textContent = event.present + ' present · ' + event.expected + ' invited' + (event.capacity ? ' · capacity ' + event.capacity : ''); item.append(occupancy);
+    if (event.over_capacity) {{ const alert = document.createElement('p'); alert.className = 'room-capacity-alert'; alert.setAttribute('role', 'alert'); alert.textContent = 'Capacity exceeded: ' + event.present + ' present, limit ' + event.capacity + '.'; item.append(alert); }}
+    return item;
+  }};
+  const refresh = async () => {{
+    try {{
+      const response = await fetch(panel.dataset.endpoint, {{headers: {{'Accept': 'application/json'}}}});
+      if (!response.ok) throw new Error('Schedule refresh failed');
+      const data = await response.json();
+      roomsNode.replaceChildren(...(data.rooms.length ? data.rooms.map((room) => {{
+        const badge = document.createElement('span'); badge.className = 'room-indicator ' + (room.occupied ? 'occupied' : 'available');
+        const light = document.createElement('i'); light.className = 'status-light'; light.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span'); label.textContent = room.name + ' · ' + (room.occupied ? 'Occupied' : 'Available') + (room.capacity ? ' · ' + room.present + '/' + room.capacity : '');
+        if (room.over_capacity) {{ badge.classList.add('over-capacity'); badge.setAttribute('role', 'alert'); label.textContent += ' · CAPACITY EXCEEDED'; }}
+        badge.append(light, label); return badge;
+      }}) : [message('No rooms are listed on upcoming meetings.') ]));
+      currentNode.replaceChildren(...(data.current.length ? data.current.map((event) => eventNode(event, true)) : [message('No meetings are in progress.') ]));
+      upcomingNode.replaceChildren(...(data.upcoming.length ? data.upcoming.map((event) => eventNode(event, false)) : [message('No upcoming reservations in the next seven days.') ]));
+      updatedNode.textContent = data.updated_at;
+    }} catch (_) {{
+      if (!updatedNode.textContent || updatedNode.textContent === '--:--:--') {{
+        roomsNode.replaceChildren(message('Live room status is temporarily unavailable.'));
+        currentNode.replaceChildren(message('Please refresh the page to try again.'));
+        upcomingNode.replaceChildren(message('Please refresh the page to try again.'));
+      }}
+    }}
+  }};
+  refresh(); window.setInterval(refresh, 60000);
+}})();
+</script>"""
+
+
 def meetings():
     if request.method == "POST":
         if not _csrf_valid():
@@ -216,6 +546,8 @@ def meetings():
         if action == "create":
             try:
                 meeting = create_meeting(current_user, request.form)
+                if meeting.status in {"Scheduled", "Rescheduled"}:
+                    sync_meeting_to_microsoft(meeting)
                 flash("Meeting saved and invitations sent." if meeting.status == "Scheduled" else
                       "Meeting saved. It will be visible to invitees after approval." if meeting.status == "Pending approval" else
                       "Meeting saved as a draft.", "success")
@@ -272,7 +604,7 @@ def meetings():
     filters = f"""<section class='panel'><form method='get' class='row g-2 align-items-end'>
 <div class='col-md-4'><label class='form-label'>Search meetings</label><input class='form-control' name='q' value='{escape(request.args.get('q', ''))}' placeholder='Title, class, or room'></div>
 <div class='col-md-3'><label class='form-label'>Status</label><select class='form-select' name='status'><option value=''>All statuses</option>{''.join(f"<option value='{escape(item)}{' selected' if status_filter == item else ''}'>{escape(item)}</option>" for item in sorted(MEETING_STATUSES))}</select></div>
-<div class='col-md-3'><label class='form-label'>Type</label><select class='form-select' name='type'><option value=''>All types</option>{''.join(f"<option value='{item}'{' selected' if type_filter == item else ''}>{escape(item.replace('_', ' ').title())}</option>" for item in ('general','class','parent_teacher','disciplinary','emergency','committee'))}</select></div>
+<div class='col-md-3'><label class='form-label'>Type</label><select class='form-select' name='type'><option value=''>All types</option>{''.join(f"<option value='{item}'{' selected' if type_filter == item else ''}>{escape(item.replace('_', ' ').title())}</option>" for item in ('general','class','parent_teacher','disciplinary','emergency','committee','panel_discussion'))}</select></div>
 <div class='col-md-2'><button class='btn btn-outline-success w-100'>Filter</button></div></form>
 <div class='d-flex gap-2 mt-3'><a class='btn btn-sm btn-outline-secondary' href='{escape(url_for('meetings', view='list', q=query, status=status_filter, type=type_filter))}'>List view</a><a class='btn btn-sm btn-outline-secondary' href='{escape(url_for('meetings', view='calendar', month=month_value, q=query, status=status_filter, type=type_filter))}'>Calendar view</a></div>
 {calendar_filter}
@@ -292,13 +624,14 @@ def meetings():
         if current_user.role == "master_admin":
             admin_links += "<a class='btn btn-sm btn-outline-secondary' href='/meetings/audit'>Audit trail</a>"
         admin_links += "</section>"
-    body = summary + admin_links + create_form + filters + parent_request + f"<section class='meeting-list'>{cards}</section>" + _meeting_styles()
+    booking_panel = "" if current_user.role == "parent" else _room_booking_panel(request.args.get("room", "").strip())
+    body = summary + admin_links + create_form + _live_schedule_panel() + booking_panel + filters + parent_request + f"<section class='meeting-list'>{cards}</section>" + _meeting_styles()
     return page("Meeting Panel", body, "parent" if current_user.role == "parent" else "master_admin")
 
 
 def _meeting_styles():
     return """<style>
-.meeting-summary{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}.meeting-summary h1{margin:.5rem 0}.meeting-stats{display:flex;gap:10px;flex-wrap:wrap}.meeting-stats div{min-width:130px;border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:grid}.meeting-stats strong{font-size:1.5rem;color:var(--green-700)}.meeting-stats span{font-size:.8rem;color:var(--muted)}.meeting-create summary{cursor:pointer}.meeting-tile{margin-bottom:12px}.meeting-tile a{text-decoration:none;color:inherit}.meeting-tile a:hover{color:var(--green-700)}.meeting-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.7fr);gap:18px}.meeting-section{margin-bottom:16px}.calendar-table td{vertical-align:top;height:116px;min-width:100px}.calendar-meeting{display:block;font-size:.75rem;border-radius:7px;padding:4px 6px;margin:4px 0;background:rgba(8,155,112,.09);color:var(--text);overflow-wrap:anywhere}.meeting-status{white-space:nowrap}@media(max-width:800px){.meeting-detail-grid{grid-template-columns:1fr}.calendar-table td{min-width:80px;height:90px}}
+.meeting-summary{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}.meeting-summary h1{margin:.5rem 0}.meeting-stats{display:flex;gap:10px;flex-wrap:wrap}.meeting-stats div{min-width:130px;border:1px solid var(--border);border-radius:12px;padding:12px 16px;display:grid}.meeting-stats strong{font-size:1.5rem;color:var(--green-700)}.meeting-stats span{font-size:.8rem;color:var(--muted)}.meeting-create summary{cursor:pointer}.meeting-tile{margin-bottom:12px}.meeting-tile a{text-decoration:none;color:inherit}.meeting-tile a:hover{color:var(--green-700)}.meeting-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.7fr);gap:18px}.meeting-section{margin-bottom:16px}.calendar-table td{vertical-align:top;height:116px;min-width:100px}.calendar-meeting{display:block;font-size:.75rem;border-radius:7px;padding:4px 6px;margin:4px 0;background:rgba(8,155,112,.09);color:var(--text);overflow-wrap:anywhere}.meeting-status{white-space:nowrap}.live-schedule h2,.room-booking-panel h2{margin:.35rem 0 .8rem}.live-schedule h3{font-size:.9rem;font-weight:700;margin:1rem 0 .55rem}.live-schedule-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.live-schedule-columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.room-indicators{display:flex;gap:9px;flex-wrap:wrap}.room-indicator{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:7px 12px;font-size:.85rem;font-weight:700}.room-indicator.available{color:#147a43;background:#eaf8ef;border-color:#9bd8b0}.room-indicator.occupied{color:#a1262e;background:#fff0f0;border-color:#e5a3a6}.room-indicator.over-capacity{color:#7b1f00;background:#ffe4d6;border-color:#ed9675}.room-capacity-alert{color:#7b1f00;background:#ffe4d6;border-radius:6px;padding:6px 8px;font-weight:700}.status-light{width:12px;height:12px;border-radius:50%;background:#20a653;box-shadow:0 0 8px #20a653}.occupied .status-light{background:#dc3545;box-shadow:0 0 8px #dc3545}.live-event{border-left:3px solid var(--green-700);padding:8px 10px;margin:7px 0;background:var(--surface);border-radius:7px}.live-event-active{border-left-color:#dc3545}.live-event-title{font-weight:700;color:var(--text)}.live-event p{margin:.25rem 0}.live-occupancy{font-size:.78rem;color:var(--muted)}.quick-booking-form{display:grid;grid-template-columns:1.2fr 1.2fr .8fr auto;align-items:end;gap:12px;margin-top:18px}.touch-control{min-height:50px;font-size:1rem}.touch-button{min-height:50px;min-width:130px;padding:10px 16px;font-weight:700}.quick-booking-card{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px}.quick-booking-card p{margin:.3rem 0 0}.quick-booking-controls{display:flex;gap:8px;flex-wrap:wrap}.booking-message{min-height:1.5rem;margin-top:10px;font-weight:700;color:var(--green-700)}.booking-message.error{color:#a1262e}@media(max-width:800px){.meeting-detail-grid,.live-schedule-columns,.quick-booking-form{grid-template-columns:1fr}.calendar-table td{min-width:80px;height:90px}}
 </style>"""
 
 
@@ -378,6 +711,8 @@ def meeting_detail(meeting_id):
                 flash("Action comment added.", "success")
             else:
                 abort(400)
+            if action in {"update", "approve_meeting", "reject_meeting"}:
+                sync_meeting_to_microsoft(meeting)
         except PermissionError:
             db.session.rollback()
             abort(403)
@@ -404,6 +739,26 @@ def _render_meeting_detail(meeting, viewer):
         if not parent_view or meeting.student.id in verified_student_ids(viewer.id):
             student_text = f" · Student: {escape(meeting.student.full_name)}"
     description = f"<p>{escape(meeting.description).replace(chr(10), '<br>')}</p>" if meeting.description else ""
+    panel_details = ""
+    if meeting.meeting_type == "panel_discussion":
+        panelists = [row.user.full_name for row in meeting.participants
+                     if row.participant_role == "panelist" and row.user]
+        moderator = meeting.chairperson.full_name if meeting.chairperson else "Not assigned"
+        panel_details = (
+            "<section class='panel meeting-section'><h2>Panel discussion</h2>"
+            f"<p><strong>Moderator:</strong> {escape(moderator)}</p>"
+            f"<p><strong>Panelists:</strong> {escape(', '.join(panelists) or 'Not assigned')}</p>"
+            f"<p><strong>Audience Q&amp;A:</strong> {int(meeting.qa_duration_minutes or 15)} minutes</p>"
+            + (f"<p><strong>Perspectives:</strong> {escape(meeting.panel_perspectives)}</p>" if meeting.panel_perspectives else "")
+            + "<p class='muted mb-0'>Keep the exchange conversational and unscripted. The moderator balances airtime, guides transitions, and invites different perspectives.</p></section>"
+        )
+    calendar_status = ""
+    if meeting.microsoft_sync_status == "synced":
+        calendar_status = "<p class='muted'>Synced to Microsoft 365 calendar.</p>"
+        if meeting.microsoft_join_url:
+            calendar_status += f"<p><a class='btn btn-sm btn-outline-success' href='{escape(meeting.microsoft_join_url)}' target='_blank' rel='noopener'>Join Teams meeting</a></p>"
+    elif meeting.microsoft_sync_status == "error":
+        calendar_status = "<p class='text-danger'>Microsoft calendar sync failed. Check the meeting sync settings.</p>"
     overview = f"""<section class='panel'><div class='d-flex justify-content-between align-items-start gap-3 flex-wrap'>
 <div><span class='pill'>{escape(meeting.status)} · {escape(meeting.approval_status.replace('_', ' ').title())}</span><h1 class='mt-2'>{escape(meeting.title)}</h1>
 <p class='muted'>{escape(meeting.meeting_type.replace('_', ' ').title())} · {escape(meeting.scheduled_date)} · {escape(_format_time(meeting.start_time))}–{escape(_format_time(meeting.end_time))} · {escape(meeting.location or 'Location to be confirmed')}{student_text}</p>{description}</div>{thread_link}</div></section>"""
@@ -635,9 +990,9 @@ def _render_meeting_detail(meeting, viewer):
 
     can_attend = any(row.user_id == viewer.id for row in meeting.participants)
     related = (
-        (response_form if parent_view else "") + agenda + participant_table + minutes_panel + action_panel
+        (response_form if parent_view else "") + panel_details + agenda + participant_table + minutes_panel + action_panel
     )
-    return overview + approval_feedback + response_form + edit_form + approval_forms + related
+    return overview.replace("</section>", f"{calendar_status}</section>", 1) + approval_feedback + response_form + edit_form + approval_forms + related
 
 
 def _report_records():
@@ -666,7 +1021,7 @@ def _report_records():
         records = [row for row in records if (row.class_name or "").casefold() == class_name]
     if organizer_id:
         records = [row for row in records if row.organizer_id == organizer_id]
-    if meeting_type in {"general", "class", "parent_teacher", "disciplinary", "emergency", "committee"}:
+    if meeting_type in {"general", "class", "parent_teacher", "disciplinary", "emergency", "committee", "panel_discussion"}:
         records = [row for row in records if row.meeting_type == meeting_type]
     if status in MEETING_STATUSES:
         records = [row for row in records if row.status == status]
@@ -761,7 +1116,7 @@ def meeting_reports():
 <div class='col-md-2'><label class='form-label'>To</label><input class='form-control' type='date' name='date_to' value='{escape(request.args.get('date_to', ''))}'></div>
 <div class='col-md-3'><label class='form-label'>Class</label><select class='form-select' name='class_name'><option value=''>All classes</option>{class_options}</select></div>
 <div class='col-md-3'><label class='form-label'>Organizer</label><select class='form-select' name='organizer_id'><option value=''>All organizers</option>{organizer_options}</select></div>
-<div class='col-md-2'><label class='form-label'>Type</label><select class='form-select' name='type'><option value=''>All</option>{''.join(f"<option value='{name}'{' selected' if request.args.get('type') == name else ''}>{name.replace('_', ' ').title()}</option>" for name in ('general','class','parent_teacher','disciplinary','emergency','committee'))}</select></div>
+<div class='col-md-2'><label class='form-label'>Type</label><select class='form-select' name='type'><option value=''>All</option>{''.join(f"<option value='{name}'{' selected' if request.args.get('type') == name else ''}>{name.replace('_', ' ').title()}</option>" for name in ('general','class','parent_teacher','disciplinary','emergency','committee','panel_discussion'))}</select></div>
 <div class='col-md-3'><label class='form-label'>Status</label><select class='form-select' name='status'><option value=''>All statuses</option>{''.join(f"<option value='{escape(name)}{' selected' if request.args.get('status') == name else ''}>{escape(name)}</option>" for name in sorted(MEETING_STATUSES))}</select></div>
 <div class='col-md-3'><button class='btn btn-accent'>Apply filters</button> <a class='btn btn-outline-secondary' href='/meetings/reports'>Clear</a></div></form>
 <div class='d-flex gap-2 flex-wrap mt-3'><a class='btn btn-outline-success' href='/meetings/reports.xlsx{query}'>Export Excel</a><a class='btn btn-outline-success' href='/meetings/reports.pdf{query}'>Export PDF</a></div></section>
@@ -907,6 +1262,9 @@ def meeting_audit():
 
 def register_routes(app):
     app.add_url_rule("/meetings", endpoint="meetings", view_func=permission_for("meetings")(meetings), methods=["GET", "POST"])
+    app.add_url_rule("/api/meetings/live-schedule", endpoint="meeting_live_schedule", view_func=permission_for("meetings")(meeting_live_schedule), methods=["GET"])
+    app.add_url_rule("/api/meetings/room-bookings", endpoint="room_booking_api", view_func=permission_for("meetings")(room_booking_api), methods=["GET", "POST"])
+    app.add_url_rule("/api/meetings/room-booking-qr.svg", endpoint="room_booking_qr", view_func=permission_for("meetings")(room_booking_qr), methods=["GET"])
     app.add_url_rule("/meetings/<int:meeting_id>", endpoint="meeting_detail", view_func=permission_for("meetings")(meeting_detail), methods=["GET", "POST"])
     app.add_url_rule("/meetings/guardians", endpoint="meeting_guardians", view_func=permission_for("meeting_admin")(meeting_guardians), methods=["GET", "POST"])
     app.add_url_rule("/meetings/settings", endpoint="meeting_settings", view_func=permission_for("meeting_settings")(meeting_settings), methods=["GET", "POST"])

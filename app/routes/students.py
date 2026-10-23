@@ -9,7 +9,7 @@ from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
 from app.extensions import db
-from app.models import User, Attendance, PendingCard, FeeTransaction, Book, BookLoan, DisciplineCase, SchoolMessage, Grade, TimetableEntry, DayScheduleEntry, Setting, StudentEnrollment, StudentGuardian
+from app.models import User, Attendance, PendingCard, FeeTransaction, Book, BookLoan, DisciplineCase, SchoolMessage, Grade, TimetableEntry, DayScheduleEntry, Setting, StudentGuardian
 from app.utils.constants import *
 from app.utils.decorators import role_required
 from app.utils.helpers import get_setting, set_setting, attendance_for_student, generate_sdms_code, teacher_assigned_classes, teacher_can_access_class, now_string, guardian_can_access_student
@@ -17,10 +17,6 @@ from app.utils.rendering import page
 from app.utils.decorators import permission_for
 from markupsafe import escape
 from app.services.activity import log_student_activity
-from app.services.enrollment_service import (
-    ENROLLMENT_STAFF_ROLES, close_enrollment, create_initial_enrollment,
-    current_enrollment, transfer_student,
-)
 
 def student_profile(student_id=None):
     if current_user.role == "student":
@@ -210,7 +206,6 @@ def students():
             s.set_password(password)
             db.session.add(s)
             db.session.flush()
-            create_initial_enrollment(current_user, s, class_name, academic_year)
             if parent_record:
                 db.session.add(StudentGuardian(
                     student_id=s.id, guardian_id=parent_record.id,
@@ -234,16 +229,11 @@ def students():
     parents = User.query.filter_by(role="parent").all()
 
     safe_html = lambda value: str(escape(value)).replace("{", "&#123;").replace("}", "&#125;")
-    can_manage_enrollment = current_user.role in ENROLLMENT_STAFF_ROLES
     student_row_items = []
     student_card_items = []
     for student in all_students:
-        enrollment_link = (
-            f" <a class='btn btn-sm btn-outline-secondary ms-2' href='{url_for('student_enrollment', student_id=student.id)}'>Enrollment history</a>"
-            if can_manage_enrollment else ""
-        )
         student_row_items.append(
-            f"<tr><td><a href='/student/profile/{student.id}'>{safe_html(student.full_name)}</a>{enrollment_link}</td>"
+            f"<tr><td><a href='/student/profile/{student.id}'>{safe_html(student.full_name)}</a></td>"
             f"<td><code>{safe_html(student.sdms_code or '-')}</code></td><td>{safe_html(student.class_name or '-')}</td>"
             f"<td>{safe_html(student.level or '-')}</td><td>{safe_html(student.trade or '-')}</td>"
             f"<td><code>{safe_html(student.rfid_uid or 'Not Assigned')}</code></td>"
@@ -251,7 +241,7 @@ def students():
         )
         student_card_items.append(
             f"<article class='registered-student-card'><div class='registered-student-card-head'>"
-            f"<a href='/student/profile/{student.id}'>{safe_html(student.full_name)}</a>{enrollment_link}"
+            f"<a href='/student/profile/{student.id}'>{safe_html(student.full_name)}</a>"
             f"<span><b>Admission No.</b> <code>{safe_html(student.sdms_code or '-')}</code></span></div>"
             f"<dl><div><dt>Class</dt><dd>{safe_html(student.class_name or '-')}</dd></div>"
             f"<div><dt>Level</dt><dd>{safe_html(student.level or '-')}</dd></div>"
@@ -590,80 +580,8 @@ def pending_rfid_cards():
     return response
 
 
-def _enrollment_csrf_field():
-    token = session.get("student_enrollment_csrf")
-    if not token:
-        token = secrets.token_urlsafe(32)
-        session["student_enrollment_csrf"] = token
-    return f"<input type='hidden' name='csrf_token' value='{escape(token)}'>"
-
-
-def student_enrollment(student_id):
-    student = db.session.get(User, student_id)
-    if not student or student.role != "student":
-        abort(404)
-    if request.method == "POST":
-        provided = request.form.get("csrf_token", "")
-        expected = session.get("student_enrollment_csrf", "")
-        if not provided or not expected or not secrets.compare_digest(provided, expected):
-            abort(400)
-        operation = request.form.get("operation", "").strip()
-        try:
-            effective_date = request.form.get("effective_date", "")
-            reason = request.form.get("reason", "")
-            if operation == "transfer":
-                transfer_student(
-                    current_user, student, request.form.get("class_name", ""),
-                    request.form.get("academic_year", ""), effective_date, reason,
-                )
-            elif operation in {"withdrawn", "graduated"}:
-                close_enrollment(current_user, student, operation, effective_date, reason)
-            else:
-                raise ValueError("Choose transfer, withdrawal, or graduation.")
-            db.session.commit()
-            flash("Student enrollment updated.", "success")
-            return redirect(url_for("student_enrollment", student_id=student.id))
-        except PermissionError:
-            db.session.rollback()
-            abort(403)
-        except ValueError as error:
-            db.session.rollback()
-            flash(str(error), "danger")
-
-    history = StudentEnrollment.query.filter_by(student_id=student.id).order_by(
-        StudentEnrollment.id.desc(),
-    ).all()
-    active = next((row for row in history if row.status == "active"), None)
-    rows = "".join(
-        f"<tr><td>{escape(row.class_name or 'Unassigned')}</td><td>{escape(row.trade or '-')}</td>"
-        f"<td>{escape(row.level or '-')}</td><td>{escape(row.academic_year or 'Unknown')}</td>"
-        f"<td>{escape(row.start_date or 'Unknown')}</td><td>{escape(row.end_date or ('Current' if row.status == 'active' else '-'))}</td>"
-        f"<td>{escape(row.status.title())}</td><td>{escape(row.reason or '-')}</td></tr>"
-        for row in history
-    )
-    class_options = "".join(
-        f"<option value='{escape(class_name)}'{' selected' if active and active.class_name == class_name else ''}>"
-        f"{escape(class_name)} Â· {escape(trade)} Â· {escape(level)}</option>"
-        for class_name, (trade, level) in sorted(CLASS_TRADE_LEVEL.items())
-    )
-    school_year_start = datetime.date.today().year if datetime.date.today().month >= 9 else datetime.date.today().year - 1
-    default_year = active.academic_year if active and active.academic_year else f"{school_year_start}-{school_year_start + 1}"
-    form = f"""<section class='panel'><h2>Change enrollment</h2>
-<form method='post' class='row g-3'>{_enrollment_csrf_field()}
-<div class='col-md-3'><label class='form-label' for='enrollment-operation'>Action</label><select class='form-select' id='enrollment-operation' name='operation' required><option value='transfer'>Transfer / promote to another class</option><option value='withdrawn'>Withdraw student</option><option value='graduated'>Mark graduated</option></select></div>
-<div class='col-md-4' data-transfer-field><label class='form-label' for='enrollment-class'>New class</label><select class='form-select' id='enrollment-class' name='class_name'>{class_options}</select></div>
-<div class='col-md-2' data-transfer-field><label class='form-label' for='enrollment-year'>Academic year</label><input class='form-control' id='enrollment-year' name='academic_year' value='{escape(default_year)}' pattern='[0-9]{{4}}-[0-9]{{4}}'></div>
-<div class='col-md-3'><label class='form-label' for='enrollment-date'>Effective date</label><input class='form-control' id='enrollment-date' type='date' name='effective_date' value='{datetime.date.today().isoformat()}' required></div>
-<div class='col-12'><label class='form-label' for='enrollment-reason'>Reason / note (optional)</label><input class='form-control' id='enrollment-reason' name='reason' maxlength='500'></div>
-<div class='col-12'><button class='btn btn-accent'>Save enrollment change</button></div></form></section>
-<script>(()=>{{const action=document.getElementById('enrollment-operation');const fields=document.querySelectorAll('[data-transfer-field]');const classSelect=document.getElementById('enrollment-class');const year=document.getElementById('enrollment-year');function sync(){{const transfer=action.value==='transfer';fields.forEach(field=>field.hidden=!transfer);classSelect.required=transfer;year.required=transfer;}}action.addEventListener('change',sync);sync();}})();</script>"""
-    body = f"""<section class='panel'><a href='/students' class='btn btn-sm btn-outline-secondary'>Back to students</a><h1 class='mt-3'>Enrollment history</h1><p><strong>{escape(student.full_name)}</strong> Â· Admission number {escape(student.sdms_code or 'not assigned')}</p><p class='muted'>The student account remains the identity record. Transfers append history and synchronize the current class used by existing classroom and report screens.</p></section>{form}
-<section class='panel'><h2>Recorded placements</h2><div class='table-responsive'><table class='table'><thead><tr><th>Class</th><th>Programme</th><th>Level</th><th>Academic year</th><th>Start</th><th>End</th><th>Status</th><th>Note</th></tr></thead><tbody>{rows or '<tr><td colspan="8" class="muted">No enrollment history is available.</td></tr>'}</tbody></table></div></section>"""
-    return page("Student Enrollment", body, "master_admin")
-
 def register_routes(app):
     app.add_url_rule('/students', endpoint='students', view_func=permission_for('students')(students), methods=['GET', 'POST'])
-    app.add_url_rule('/students/<int:student_id>/enrollment', endpoint='student_enrollment', view_func=permission_for('student_enrollment')(student_enrollment), methods=['GET', 'POST'])
     app.add_url_rule('/students/pending-rfid-cards', endpoint='pending_rfid_cards', view_func=permission_for('students')(pending_rfid_cards), methods=['GET'])
     app.add_url_rule('/students/<int:student_id>/registration-complete', endpoint='student_registration_confirmation', view_func=role_required('master_admin', 'secretary')(student_registration_confirmation), methods=['GET'])
     app.add_url_rule('/students/<int:student_id>/registration-artifact/<artifact>', endpoint='student_registration_artifact', view_func=role_required('master_admin', 'secretary')(student_registration_artifact), methods=['GET'])

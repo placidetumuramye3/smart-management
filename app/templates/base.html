@@ -1,11 +1,11 @@
 
-<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} | Lycée de Muhura</title>
+<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }} | Lycée de Muhura</title><script>(function(){try{var root=document.documentElement,theme=localStorage.getItem('muhura_theme'),collapsed=localStorage.getItem('muhura_sidebar_collapsed');if(theme==='light'||theme==='dark')root.setAttribute('data-theme',theme);var compact=collapsed===null?window.innerWidth<=900:collapsed==='true';root.classList.toggle('sidebar-collapsed',compact);root.classList.toggle('sidebar-expanded',!compact)}catch(_){}})();</script>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <style>
 :root{--green-900:#07553f;--green-800:#087a58;--green-700:#0b9b70;--green-500:#39bd72;--gold:#d9ad2b;--page:#f4f7f6;--card:#fff;--text:#26333a;--muted:#7a878d;--border:#e7ecea;--sidebar-width:250px;--topbar:76px;--shadow:0 8px 26px rgba(23,54,45,.07);--radius:14px}
 [data-theme="dark"]{--page:#101b18;--card:#172520;--text:#eef7f3;--muted:#9eb0aa;--border:#294039;--shadow:0 8px 26px rgba(0,0,0,.18)}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--page);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}body{overflow-x:hidden}a{text-decoration:none}
-.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar-width);z-index:1050;background:linear-gradient(180deg,#08a77d 0%,#42bd68 58%,#84ca36 100%);color:#fff;padding:18px 13px;overflow-y:auto;box-shadow:7px 0 25px rgba(10,76,58,.13)}
+.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar-width);min-width:var(--sidebar-width);z-index:1050;background:linear-gradient(180deg,#08a77d 0%,#42bd68 58%,#84ca36 100%);color:#fff;padding:18px 13px;overflow-y:auto;box-shadow:7px 0 25px rgba(10,76,58,.13)}
 .sidebar-brand{display:flex;gap:11px;align-items:center;color:#fff;padding:6px 9px 18px;border-bottom:1px solid rgba(255,255,255,.20);margin-bottom:16px}.sidebar-brand img{width:48px;height:48px;object-fit:contain;background:#fff;border-radius:12px;padding:4px}.brand-title{font-size:.92rem;font-weight:850;line-height:1.15}.brand-sub{font-size:.65rem;opacity:.82;margin-top:3px;letter-spacing:.04em}.menu-label{font-size:.63rem;font-weight:800;letter-spacing:.12em;opacity:.78;margin:18px 11px 7px;text-transform:uppercase}.menu-link{display:flex;align-items:center;gap:11px;color:#effff8;border-radius:9px;padding:10px 11px;margin:3px 0;font-size:.83rem;font-weight:600;transition:.18s}.menu-link i{font-size:1rem;width:20px;text-align:center}.menu-link:hover,.menu-link.active{background:rgba(255,255,255,.20);color:#fff;transform:translateX(2px)}.sidebar-bottom{border-top:1px solid rgba(255,255,255,.20);margin-top:18px;padding-top:13px}.theme-toggle{width:100%;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.13);color:#fff;border-radius:9px;padding:9px;font-weight:700;font-size:.78rem}
 .main-shell{margin-left:var(--sidebar-width);min-height:100vh}.topbar{height:var(--topbar);background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 30px;position:sticky;top:0;z-index:1000}.topbar-left{display:flex;align-items:center;gap:14px}.page-kicker{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--green-700);font-weight:850}.page-title{font-size:1.18rem;font-weight:800;margin:0}.topbar-actions{display:flex;align-items:center;gap:12px}.date-chip,.profile-chip{border:1px solid var(--border);background:var(--page);border-radius:10px;padding:8px 11px;font-size:.77rem;color:var(--muted)}.profile-chip{display:flex;align-items:center;gap:9px;color:var(--text);font-weight:700}.avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--green-700),var(--green-500));color:#fff;font-weight:800}.mobile-menu{display:none;border:0;background:var(--page);color:var(--text);width:38px;height:38px;border-radius:9px}
 .content{padding:28px 30px 10px;max-width:1600px;margin:auto}.flash{padding:14px 30px 0}.flash .alert{border:0;border-radius:10px;box-shadow:var(--shadow)}.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:20px;box-shadow:var(--shadow)}.glass-shell{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 140px);padding:24px 0}.glass-auth{width:min(980px,100%);display:grid;grid-template-columns:1.02fr 1.18fr;overflow:hidden;border:1px solid rgba(255,255,255,.25);border-radius:30px;background:rgba(255,255,255,.18);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 22px 55px rgba(7,85,63,.12)}.glass-side{padding:34px 28px;background:linear-gradient(135deg,rgba(8,155,112,.92),rgba(17,96,72,.82));color:#fff;position:relative;overflow:hidden}.glass-side:before{content:"";position:absolute;inset:-20% auto auto -10%;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,.12)}.glass-side:after{content:"";position:absolute;right:-80px;bottom:-110px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.06)}.glass-side>*{position:relative;z-index:1}.glass-side .eyebrow{font-size:.7rem;letter-spacing:.13em;text-transform:uppercase;opacity:.85;font-weight:800}.glass-side h2{font-size:clamp(1.8rem,2vw,2.5rem);margin:16px 0 14px;line-height:1.08}.glass-side p{margin:0 0 20px;color:rgba(255,255,255,.82)}.glass-badges{display:flex;flex-wrap:wrap;gap:10px}.glass-badge{padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);font-size:.76rem;font-weight:700}.glass-form{padding:28px 28px 24px;background:rgba(255,255,255,.08)}.glass-form .pill{margin-bottom:12px}.glass-form form{margin-top:16px}.glass-form .form-label{font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:800;margin-bottom:8px}.glass-form .form-control,.glass-form .form-select{background:rgba(255,255,255,.28);border:1px solid rgba(255,255,255,.32);color:var(--text);backdrop-filter:blur(10px);border-radius:12px;padding:12px 14px}.glass-form .form-control::placeholder{color:var(--muted)}.glass-form .form-control:focus,.glass-form .form-select:focus{background:rgba(255,255,255,.34);border-color:rgba(8,155,112,.5);box-shadow:0 0 0 .18rem rgba(8,155,112,.12)}.glass-form .btn-accent{width:100%;padding:12px 18px;border-radius:12px;font-size:1rem}.glass-form .secondary-link{margin-top:12px;text-align:center;color:var(--muted);font-size:.85rem}.glass-form .secondary-link a{color:var(--green-700);font-weight:700}.dashboard-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:22px}.dashboard-heading p{margin:4px 0 0;color:var(--muted)}h1{font-size:clamp(1.55rem,2.5vw,2.15rem);font-weight:820;letter-spacing:-.035em;margin-bottom:5px}h2{font-size:1.15rem;font-weight:800;letter-spacing:-.02em}.accent{color:var(--gold)}.muted{color:var(--muted)!important}.pill{display:inline-flex;align-items:center;border:1px solid rgba(217,173,43,.45);background:rgba(217,173,43,.10);color:#a27b08;border-radius:999px;padding:5px 10px;font-size:.68rem;font-weight:800;letter-spacing:.04em}.btn-accent{background:var(--gold);border:0;color:#17352a;font-weight:800;border-radius:9px;padding:9px 15px}.btn-accent:hover{background:#e6bd3e;color:#17352a;transform:translateY(-1px)}.form-control,.form-select{background:var(--card);color:var(--text);border-color:var(--border);border-radius:9px}.form-control:focus,.form-select:focus{background:var(--card);color:var(--text);border-color:var(--green-700);box-shadow:0 0 0 .18rem rgba(8,155,112,.14)}.table{--bs-table-bg:transparent;--bs-table-color:var(--text);--bs-table-border-color:var(--border)}.table th{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:800;border-bottom-width:1px}.table td{vertical-align:middle;font-size:.86rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);transition:.2s;color:var(--text)}.stat:hover{transform:translateY(-2px)}.stat-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.stat-icon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:rgba(8,155,112,.10);color:var(--green-700);font-size:1.1rem}.stat-value{font-size:1.8rem;font-weight:850;line-height:1}.stat-label{font-size:.78rem;color:var(--muted);margin-top:8px}.stat-note{font-size:.7rem;color:var(--green-700);margin-top:8px;font-weight:700}.hero-card{background:linear-gradient(120deg,#087a58,#0aa977 58%,#4fbd61);color:#fff;border:0;position:relative;overflow:hidden}.hero-card:after{content:"";position:absolute;width:220px;height:220px;border-radius:50%;right:-90px;top:-110px;background:rgba(255,255,255,.10)}.hero-card .muted{color:rgba(255,255,255,.78)!important}.hero-card .accent{color:#ffe28a}.chart-card{min-height:330px}.chart-wrap{height:245px;position:relative}.timeline{position:relative;padding-left:25px}.timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:2px;background:var(--border)}.timeline-item{position:relative;padding:0 0 18px 15px}.timeline-dot{position:absolute;left:-1px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--green-700);box-shadow:0 0 0 4px rgba(8,155,112,.10)}.timeline-item strong{font-size:.82rem}.timeline-item small{display:block;color:var(--muted);margin-top:3px}.quick-link{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--border);border-radius:11px;color:var(--text);transition:.18s}.quick-link:hover{border-color:var(--green-500);transform:translateY(-1px)}.quick-link i{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:rgba(8,155,112,.10);color:var(--green-700)}footer{padding:22px 30px 30px;text-align:center;color:var(--muted);font-size:.76rem}code{color:var(--green-700)}
@@ -93,7 +93,7 @@ html,body{background:var(--page);color:var(--text);font-family:Inter,ui-sans-ser
 .form-control,.form-select{min-height:44px;border-radius:10px}.form-label{font-size:.9rem;font-weight:600;color:var(--text)}.form-control:focus,.form-select:focus{border-color:#67bd96;box-shadow:0 0 0 .2rem rgba(19,132,95,.13)}
 .table-responsive{border-radius:12px}.table th{letter-spacing:.06em}.table td{padding-top:.78rem;padding-bottom:.78rem}.pill{border-color:#d8eadd;background:#edf7f0;color:#24764e}
 .chart-card{border-radius:18px}.flash .alert{border-radius:12px}
-@media(max-width:900px){:root{--sidebar-width:76px}.content{padding:22px 20px}.panel{padding:20px}}
+@media(max-width:900px){:root{--sidebar-width:84px}.content{padding:22px 20px}.panel{padding:20px}}
 @media(max-width:600px){:root{--sidebar-width:min(300px,92vw)}.content{padding:14px 10px}.panel{padding:15px;border-radius:14px}.topbar{box-shadow:none}.grid{gap:10px}.stat{border-radius:13px}.dashboard-heading{gap:10px}.hero-card{padding:20px}.table-responsive{margin-inline:-2px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 @media(hover:none){.stat:hover,.quick-link:hover,.btn-accent:hover{transform:none}}
@@ -171,7 +171,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 @media(max-width:1100px){
 }
 @media(max-width:900px){
- :root{--sidebar-width:76px}
+ :root{--sidebar-width:84px}
  .sidebar{padding:14px 8px}
  .sidebar-brand{justify-content:center;padding:5px 0 16px}
  .sidebar-brand>div{display:none}
@@ -297,16 +297,218 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .quick-access-grid .quick-link{min-height:74px}
 @media(min-width:768px) and (max-width:900px){.sidebar .theme-toggle{display:grid;place-items:center;padding:9px 4px}.sidebar .theme-toggle span{display:none}}
 
+/* Warm school palette based on the school website reference. */
+:root{
+ --page:#f6f7f8;--card:#fff;--text:#35423b;--muted:#667487;--border:#e7eaed;
+ --green-900:#584337;--green-800:#805943;--green-700:#a96546;--green-500:#c18465;
+ --gold:#b96d4c;--shadow:0 4px 16px rgba(43,54,62,.04);--radius:15px;
+ --bs-primary:#98725d;--bs-primary-rgb:152,114,93;--bs-success:#668b74;--bs-success-rgb:102,139,116;
+ --bs-info:#718a96;--bs-info-rgb:113,138,150;--bs-warning:#b9945d;--bs-warning-rgb:185,148,93;
+ --bs-danger:#b66f6b;--bs-danger-rgb:182,111,107;
+}
+[data-theme="dark"]{
+ --page:#20272b;--card:#293237;--text:#e8ebec;--muted:#adb6ba;--border:#3b464b;
+ --green-900:#e6c7b8;--green-800:#d8a991;--green-700:#c18465;--green-500:#d19a7a;
+ --gold:#c18465;--shadow:0 6px 20px rgba(0,0,0,.16);
+ --bs-primary:#b48c74;--bs-primary-rgb:180,140,116;--bs-success:#83a18e;--bs-success-rgb:131,161,142;
+ --bs-info:#8da3ac;--bs-info-rgb:141,163,172;--bs-warning:#c6a673;--bs-warning-rgb:198,166,115;
+ --bs-danger:#c48a85;--bs-danger-rgb:196,138,133;
+}
+html,body{background:var(--page);color:var(--text)}
+.sidebar{background:#715b4f;color:#fff;box-shadow:4px 0 18px rgba(80,46,28,.10)}
+.sidebar-brand{color:#fff}
+.menu-label{color:rgba(255,255,255,.78)}
+.menu-link{color:rgba(255,255,255,.9)}
+.menu-link i{color:rgba(255,255,255,.8)}
+.menu-link:hover,.menu-link.active{background:rgba(255,255,255,.17);color:#fff;box-shadow:inset 3px 0 #fff;transform:none}
+.menu-link:hover i,.menu-link.active i{color:#fff}
+[data-theme="dark"] .menu-link{color:#e5e9eb}
+[data-theme="dark"] .menu-link:hover,[data-theme="dark"] .menu-link.active{background:rgba(193,132,101,.14);color:#e2c0ad}
+.topbar{background:var(--card);color:var(--text)}
+.page-kicker,.stat-note{color:var(--green-700)}
+.avatar{background:linear-gradient(135deg,#806451,#a67b61)}
+.panel,.stat{background:var(--card);border-color:var(--border);box-shadow:var(--shadow)}
+.stat-icon,.quick-link i{background:#f4ece7;color:#a96546}
+.stat-icon{border-radius:50%;width:48px;height:48px}
+.hero-card{background:linear-gradient(115deg,#f5efeb,#fff 78%);color:var(--text);border:1px solid #eee3dc;box-shadow:0 6px 18px rgba(93,55,34,.045)}
+.hero-card .muted{color:var(--muted)!important}.hero-card .accent{color:var(--green-700)}
+.btn-accent,.btn-success{background:#b96d4c;border-color:#b96d4c;color:#fff}
+.btn-accent:hover,.btn-success:hover{background:#a45f42;border-color:#a45f42;color:#fff}
+.welcome-hero{background:#293033;color:#f1f2f2;border-color:#293033;box-shadow:0 6px 18px rgba(24,32,36,.10)}
+.welcome-hero h1{color:#f7f7f6}.welcome-hero .accent{color:#cf9372}.welcome-hero .muted{color:#c1c6c8!important}
+.welcome-hero .pill{border-color:rgba(255,255,255,.16);background:rgba(255,255,255,.045);color:#d0d4d5}
+.welcome-hero .btn-accent{background:#b96d4c;border-color:#b96d4c;color:#fff}
+.welcome-hero .btn-accent:hover{background:#a45f42;border-color:#a45f42;color:#fff}
+.btn-rfid-portal{background:#5f8a73;border:1px solid #7fa38e;color:#fff;font-weight:800;border-radius:9px;padding:9px 15px}
+.btn-rfid-portal:hover{background:#527a65;border-color:#8cac99;color:#fff;transform:translateY(-1px)}
+.form-control:focus,.form-select:focus{border-color:#bd876c;box-shadow:0 0 0 .16rem rgba(185,109,76,.10)}
+.pill{border-color:#e8d9cf;background:#f5eeea;color:#825942}
+.theme-switch{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:0 12px;border:1px solid #e8dbd2;border-radius:11px;background:#f7f2ef;color:#805943;font-size:.8rem;font-weight:750;white-space:nowrap;cursor:pointer;transition:background .16s,border-color .16s,transform .16s}
+.theme-switch:hover{background:#f1e8e2;border-color:#d8bba9;transform:translateY(-1px)}
+.theme-switch i{font-size:1rem}
+.theme-toggle [data-theme-label]{font-size:.78rem}
+.quick-link:hover{border-color:#d8bba9;background:#faf6f3}
+.sidebar-collapse-toggle{display:flex;align-items:center;justify-content:flex-start;gap:9px;width:100%;margin:2px 0 12px;padding:9px 11px;border:1px solid rgba(255,255,255,.3);border-radius:10px;background:rgba(255,255,255,.09);color:#fff;font-size:.78rem;font-weight:700;text-align:left;cursor:pointer}
+.sidebar-collapse-toggle:hover{background:rgba(255,255,255,.18)}
+.sidebar-collapse-toggle i{font-size:1rem}
+html.sidebar-collapsed{--sidebar-width:84px}
+html.sidebar-collapsed .sidebar-collapse-toggle{justify-content:center;padding-inline:5px}
+html.sidebar-collapsed .sidebar-collapse-toggle span{display:none}
+html.sidebar-collapsed .sidebar-brand{justify-content:center;padding:5px 0 16px}
+html.sidebar-collapsed .sidebar-brand>div,html.sidebar-collapsed .menu-label{display:none}
+html.sidebar-collapsed .menu-link{justify-content:center;padding:11px 5px}
+html.sidebar-collapsed .menu-link>span:not(.badge){position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+html.sidebar-collapsed .menu-link .badge{display:none}
+html.sidebar-expanded{--sidebar-width:252px}
+html.sidebar-expanded .sidebar{padding:18px 12px}
+html.sidebar-expanded .sidebar-brand{justify-content:flex-start;padding:6px 34px 18px 9px}
+html.sidebar-expanded .sidebar-brand>div,html.sidebar-expanded .menu-label{display:block}
+html.sidebar-expanded .menu-link{justify-content:flex-start;padding:10px 12px}
+html.sidebar-expanded .menu-link span{display:inline}
+html.sidebar-expanded .menu-link .badge{display:inline-block}
+[data-theme="dark"] .sidebar-collapse-toggle{border-color:rgba(255,255,255,.24);background:rgba(0,0,0,.08)}
+[data-theme="dark"] .stat-icon,[data-theme="dark"] .quick-link i{background:rgba(193,132,101,.12);color:#d4a287}
+[data-theme="dark"] .theme-switch{border-color:#55473f;background:#292522;color:#d5ad96}
+[data-theme="dark"] .theme-switch:hover{background:#342e29;border-color:#735c4d}
+[data-theme="dark"] .hero-card{background:linear-gradient(115deg,#38322e,#303639 78%);border-color:#4b4743;color:var(--text)}
+[data-theme="dark"] .pill{border-color:#62534a;background:#38312c;color:#d5ad96}
+@media(max-width:600px){.theme-switch{width:38px;min-width:38px;padding:0}.theme-switch [data-theme-label]{display:none}.topbar-actions{gap:6px}}
+@media(max-width:767px){
+  html.sidebar-collapsed{--sidebar-width:84px}
+  html.sidebar-expanded{--sidebar-width:min(270px,84vw)}
+  .sidebar{width:var(--sidebar-width);min-width:var(--sidebar-width);padding:14px 8px;transform:translateX(0);box-shadow:3px 0 14px rgba(36,42,45,.08)}
+  .sidebar.mobile-open{transform:translateX(0);box-shadow:3px 0 14px rgba(36,42,45,.08)}
+  .sidebar-collapse-toggle{display:flex!important}
+  html.sidebar-collapsed .sidebar-collapse-toggle{justify-content:center;padding-inline:5px}
+  html.sidebar-collapsed .sidebar-collapse-toggle span,html.sidebar-collapsed .sidebar-brand>div,html.sidebar-collapsed .menu-label{display:none}
+  html.sidebar-collapsed .sidebar-brand{justify-content:center;padding:5px 0 16px}
+  html.sidebar-collapsed .menu-link{justify-content:center;padding:11px 5px}
+  html.sidebar-collapsed .menu-link>span:not(.badge){position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  html.sidebar-collapsed .menu-link .badge{display:none}
+  html.sidebar-expanded .sidebar-brand{justify-content:flex-start;padding:6px 8px 18px}
+  html.sidebar-expanded .sidebar-brand>div,html.sidebar-expanded .menu-label{display:block}
+  html.sidebar-expanded .menu-link{justify-content:flex-start;padding:10px 10px}
+  html.sidebar-expanded .menu-link span{display:inline}
+  html.sidebar-expanded .menu-link .badge{display:inline-block}
+  .main-shell{width:auto;margin-left:var(--sidebar-width)!important}
+  .mobile-menu{display:none!important}
+}
+
+/* System-wide warm dashboard theme from the supplied design reference. */
+:root{
+  --page:#f7f5ef;--card:#fffefa;--text:#30343a;--muted:#777b80;--border:#ece8df;
+  --green-900:#714f18;--green-800:#9a6813;--green-700:#c27d0a;--green-500:#dda43b;
+  --gold:#e89812;--shadow:0 3px 14px rgba(60,53,40,.045);--radius:15px;
+  --bs-body-bg:var(--page);--bs-body-color:var(--text);--bs-primary:#df9012;--bs-primary-rgb:223,144,18;
+  --bs-success:#758c68;--bs-success-rgb:117,140,104;--bs-info:#718a91;--bs-info-rgb:113,138,145;
+  --bs-warning:#d99b2b;--bs-warning-rgb:217,155,43;--bs-danger:#bd7068;--bs-danger-rgb:189,112,104;
+  --bs-link-color:#a66e12;--bs-link-hover-color:#80520a;
+}
+[data-theme="dark"]{
+  --page:#24282a;--card:#2d3234;--text:#ecebe7;--muted:#b3b4b0;--border:#414648;
+  --green-900:#e7c98a;--green-800:#e4b95f;--green-700:#dda43b;--green-500:#e7bb6e;
+  --gold:#e0a23b;--shadow:0 5px 18px rgba(0,0,0,.14);
+  --bs-body-bg:var(--page);--bs-body-color:var(--text);--bs-primary:#dca03b;--bs-primary-rgb:220,160,59;
+  --bs-success:#9bac8d;--bs-success-rgb:155,172,141;--bs-info:#9bb2b5;--bs-info-rgb:155,178,181;
+  --bs-warning:#e2b45f;--bs-warning-rgb:226,180,95;--bs-danger:#d08b82;--bs-danger-rgb:208,139,130;
+  --bs-link-color:#e3b766;--bs-link-hover-color:#f0cd86;
+}
+html,body{background:var(--page);color:var(--text)}
+.sidebar{background:#fffefa;color:#4c5054;border-right:1px solid var(--border);box-shadow:2px 0 12px rgba(49,44,34,.035)}
+.sidebar-brand{color:#30343a;border-bottom-color:var(--border)}
+.sidebar-brand img{border:1px solid var(--border);box-shadow:none}
+.menu-label{color:#96938b;opacity:1}
+.menu-link,.menu-link i{color:#686b6e}
+.menu-link:hover,.menu-link.active{background:#fff1d3;color:#9b650b;box-shadow:inset 3px 0 #e99a18;transform:none}
+.menu-link:hover i,.menu-link.active i{color:#bd7910}
+.sidebar-bottom{border-top-color:var(--border)}
+.sidebar-collapse-toggle{border-color:#ece3d4;background:#f8f5ef;color:#6b6257}
+.sidebar-collapse-toggle:hover{background:#f2eadb}
+.theme-toggle{border-color:#e8e1d5;background:#f8f5ef;color:#675d51}
+.topbar{background:var(--card);border-bottom-color:var(--border);box-shadow:0 2px 8px rgba(52,46,35,.025)}
+.page-kicker,.stat-note,code{color:var(--green-700)}
+.avatar{background:#e8a32c;color:#fff}
+.content{padding-top:24px}
+.panel,.stat,.card,.chart-card,.quick-link,.account-popover,.account-edit>form{background:var(--card);border-color:var(--border);box-shadow:var(--shadow);border-radius:var(--radius)}
+.panel{padding:20px}
+.stat-icon,.quick-link i{background:#fff3dc;color:#bd7910}
+.hero-card{background:linear-gradient(115deg,#fff5df,#fffefa 78%);color:var(--text);border:1px solid #f0e6d2;box-shadow:var(--shadow)}
+.hero-card .muted{color:var(--muted)!important}.hero-card .accent{color:#bd7910}
+.welcome-hero{background:#fffefa;color:var(--text);border-color:var(--border);box-shadow:var(--shadow)}
+.welcome-hero h1{color:var(--text)}.welcome-hero .accent{color:#bd7910}.welcome-hero .muted{color:var(--muted)!important}
+.welcome-hero .pill{border-color:#eee1c9;background:#fbf4e7;color:#8c651e}
+body:has(.glass-shell){background:radial-gradient(ellipse at 12% 12%,rgba(230,154,27,.10),transparent 35%),radial-gradient(ellipse at 88% 82%,rgba(201,177,130,.12),transparent 34%),linear-gradient(135deg,#f7f4ed,#f3f1ea 58%,#f7f5ef)}
+.glass-auth{border-color:#ece5d8;background:rgba(255,254,250,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 16px 42px rgba(58,49,33,.08)}
+.glass-side{background:linear-gradient(145deg,#f3e7cf,#eee4d1);color:#30343a}
+.glass-side p{color:#666b70}.glass-side:before,.glass-side:after{background:rgba(226,164,55,.08)}
+.glass-badge{background:rgba(255,255,255,.58);border-color:rgba(150,117,59,.15);color:#66583e}
+.glass-form{background:#fffefa}
+.glass-form .form-control,.glass-form .form-select{background:#fffefa;border-color:var(--border);color:var(--text);backdrop-filter:none}
+.glass-form .form-control:focus,.glass-form .form-select:focus{background:#fffefa;border-color:#dda43b;box-shadow:0 0 0 .16rem rgba(221,164,59,.13)}
+.btn-accent,.btn-success,.btn-primary{background:#e69a1b;border-color:#e69a1b;color:#fff;font-weight:700}
+.btn-accent:hover,.btn-success:hover,.btn-primary:hover{background:#cc8614;border-color:#cc8614;color:#fff}
+.btn-rfid-portal{background:#758c68;border-color:#758c68;color:#fff}
+.btn-rfid-portal:hover{background:#637957;border-color:#637957;color:#fff}
+.btn-outline-success,.btn-outline-primary{border-color:#d99a2b;color:#a66e12}
+.btn-outline-success:hover,.btn-outline-primary:hover{background:#e69a1b;border-color:#e69a1b;color:#fff}
+.form-control,.form-select{background:var(--card);color:var(--text);border-color:var(--border);border-radius:9px}
+.form-control:focus,.form-select:focus{background:var(--card);color:var(--text);border-color:#dda43b;box-shadow:0 0 0 .16rem rgba(221,164,59,.13)}
+.table{--bs-table-bg:transparent;--bs-table-color:var(--text);--bs-table-border-color:var(--border)}
+.table thead th{background:#faf8f3;color:#77766f;border-color:var(--border)}
+.table-hover>tbody>tr:hover>*{--bs-table-bg-state:#fbf7ed}
+.pill{border-color:#eee1c9;background:#fbf4e7;color:#8c651e}
+.theme-switch{border-color:#eee1ca;background:#fbf7ee;color:#8b641f}
+.theme-switch:hover{background:#f7efdF;border-color:#e2c990}
+.quick-link:hover{border-color:#e5c982;background:#fdf9f0}
+.timeline-dot{background:#d99a2b;box-shadow:0 0 0 4px rgba(217,154,43,.10)}
+.sidebar-collapse-toggle i{color:inherit}
+[data-theme="dark"] .sidebar{background:#292e30;color:var(--text);border-right-color:var(--border);box-shadow:2px 0 12px rgba(0,0,0,.12)}
+[data-theme="dark"] .sidebar-brand{color:var(--text);border-bottom-color:var(--border)}
+[data-theme="dark"] .menu-link,[data-theme="dark"] .menu-link i{color:#c7c8c4}
+[data-theme="dark"] .menu-link:hover,[data-theme="dark"] .menu-link.active{background:#40392d;color:#f0ca7c;box-shadow:inset 3px 0 #dca03b}
+[data-theme="dark"] .menu-link:hover i,[data-theme="dark"] .menu-link.active i{color:#f0ca7c}
+[data-theme="dark"] .sidebar-collapse-toggle,[data-theme="dark"] .theme-toggle{border-color:var(--border);background:#303638;color:var(--text)}
+[data-theme="dark"] .stat-icon,[data-theme="dark"] .quick-link i{background:#3a352b;color:#e2b45f}
+[data-theme="dark"] .hero-card,[data-theme="dark"] .welcome-hero{background:#2d3234;border-color:var(--border);color:var(--text)}
+[data-theme="dark"] body:has(.glass-shell){background:radial-gradient(ellipse at 12% 12%,rgba(221,164,59,.08),transparent 35%),linear-gradient(135deg,#24282a,#2b3032 58%,#24282a)}
+[data-theme="dark"] .glass-auth{border-color:var(--border);background:rgba(45,50,52,.94);box-shadow:0 16px 42px rgba(0,0,0,.18)}
+[data-theme="dark"] .glass-side{background:linear-gradient(145deg,#433d32,#363535);color:var(--text)}
+[data-theme="dark"] .glass-side p,[data-theme="dark"] .glass-badge{color:var(--muted)}
+[data-theme="dark"] .glass-badge{background:rgba(255,255,255,.05);border-color:var(--border)}
+[data-theme="dark"] .glass-form{background:#2d3234}
+[data-theme="dark"] .glass-form .form-control,[data-theme="dark"] .glass-form .form-select{background:#303638;border-color:var(--border);color:var(--text)}
+[data-theme="dark"] .welcome-hero h1,[data-theme="dark"] .hero-card h2{color:var(--text)}
+[data-theme="dark"] .welcome-hero .muted,[data-theme="dark"] .hero-card .muted{color:var(--muted)!important}
+[data-theme="dark"] .table thead th{background:#303638;color:#c1c1bc}
+[data-theme="dark"] .theme-switch{border-color:#514637;background:#34312a;color:#e4bd72}
+@media(max-width:767px){.panel{padding:15px}.topbar{background:var(--card)}}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 function togglePasswordVisibility(inputId,button){const input=document.getElementById(inputId);if(!input)return;const visible=input.type==='password';input.type=visible?'text':'password';button.setAttribute('aria-pressed',String(visible));button.setAttribute('aria-label',visible?'Hide password':'Show password');button.innerHTML=`<i class="bi ${visible?'bi-eye-slash':'bi-eye'}" aria-hidden="true"></i>`}
-function toggleTheme(){const root=document.documentElement;const next=root.getAttribute('data-theme')==='light'?'dark':'light';root.setAttribute('data-theme',next);localStorage.setItem('muhura_theme',next)}
+function updateThemeControls(){const dark=document.documentElement.getAttribute('data-theme')==='dark';document.querySelectorAll('[data-theme-toggle]').forEach(button=>{button.setAttribute('aria-pressed',String(dark));button.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');const icon=button.querySelector('i');if(icon)icon.className='bi '+(dark?'bi-sun':'bi-moon-stars');const label=button.querySelector('[data-theme-label]');if(label)label.textContent=dark?'Light':'Dark'})}
+function toggleTheme(){const root=document.documentElement;const next=root.getAttribute('data-theme')==='light'?'dark':'light';root.setAttribute('data-theme',next);localStorage.setItem('muhura_theme',next);updateThemeControls()}
+function setSidebarCollapsed(collapsed,persist=true){const root=document.documentElement,compact=Boolean(collapsed);root.classList.toggle('sidebar-collapsed',compact);root.classList.toggle('sidebar-expanded',!compact);if(persist)localStorage.setItem('muhura_sidebar_collapsed',String(compact));const button=document.querySelector('[data-sidebar-collapse]');if(button){button.setAttribute('aria-pressed',String(compact));button.setAttribute('aria-label',compact?'Expand sidebar':'Collapse sidebar');button.title=compact?'Expand sidebar':'Collapse sidebar';const icon=button.querySelector('i');if(icon)icon.className='bi '+(compact?'bi-chevron-bar-right':'bi-chevron-bar-left');const label=button.querySelector('span');if(label)label.textContent=compact?'Expand sidebar':'Collapse sidebar'}document.querySelectorAll('.menu-link').forEach(link=>{const label=link.querySelector('span:not(.badge)');if(label){link.title=label.textContent.trim();link.setAttribute('aria-label',label.textContent.trim())}})}
+function toggleSidebarWidth(){setSidebarCollapsed(!document.documentElement.classList.contains('sidebar-collapsed'))}
 function toggleSidebar(forceOpen){const sidebar=document.querySelector('.sidebar'),backdrop=document.querySelector('.sidebar-backdrop'),button=document.querySelector('.mobile-menu');if(!sidebar)return;const open=typeof forceOpen==='boolean'?forceOpen:!sidebar.classList.contains('mobile-open');sidebar.classList.toggle('mobile-open',open);document.body.classList.toggle('sidebar-open',open);if(backdrop)backdrop.classList.toggle('is-visible',open);if(button)button.setAttribute('aria-expanded',String(open))}
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.body.classList.contains('sidebar-open'))toggleSidebar(false)});
 document.addEventListener('DOMContentLoaded',()=>{
   const saved=localStorage.getItem('muhura_theme')||'light';
   document.documentElement.setAttribute('data-theme',saved);
+  updateThemeControls();
+  const sidebarPreference=localStorage.getItem('muhura_sidebar_collapsed');
+  setSidebarCollapsed(sidebarPreference===null?window.innerWidth<=900:sidebarPreference==='true',false);
+  window.addEventListener('storage',event=>{
+    if(event.key==='muhura_theme'&&(event.newValue==='light'||event.newValue==='dark')){
+      document.documentElement.setAttribute('data-theme',event.newValue);
+      updateThemeControls();
+    }
+    if(event.key==='muhura_sidebar_collapsed'&&(event.newValue==='true'||event.newValue==='false')){
+      setSidebarCollapsed(event.newValue==='true',false);
+    }
+  });
+  window.addEventListener('resize',()=>{const preference=localStorage.getItem('muhura_sidebar_collapsed');setSidebarCollapsed(preference===null?window.innerWidth<=900:preference==='true',false)});
   const path=window.location.pathname;
   document.querySelectorAll('.menu-link').forEach(link=>{
     if(link.getAttribute('href')===path){link.classList.add('active');link.setAttribute('aria-current','page');}
@@ -343,11 +545,12 @@ document.addEventListener('DOMContentLoaded',()=>{
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('select[name="role"]').forEach(role=>{const classField=role.form?.querySelector('[name="class_name"]'),fields=role.form?.querySelector('.teacher-class-fields');const syncRequired=()=>{const isTeacher=role.value==='teacher';if(classField)classField.required=isTeacher;if(fields)fields.hidden=!isTeacher};role.addEventListener('change',syncRequired);syncRequired()});const trade=document.getElementById('staff-trade'),level=document.getElementById('staff-level'),classChoice=document.getElementById('staff-class-choice');if(trade&&level&&classChoice){const levels=Array.from(level.querySelectorAll('option[data-trade]')),classes=Array.from(classChoice.querySelectorAll('option[data-trade]'));function updateStaffLevels(){const selectedTrade=trade.value,available=levels.filter(option=>option.dataset.trade===selectedTrade);level.innerHTML='<option value="">Choose level...</option>';available.forEach(option=>level.appendChild(option.cloneNode(true)));level.disabled=!selectedTrade;updateStaffClasses()}function updateStaffClasses(){const selectedTrade=trade.value,selectedLevel=level.value;classChoice.innerHTML='<option value="">Choose class...</option>';classes.filter(option=>option.dataset.trade===selectedTrade&&option.dataset.level===selectedLevel).forEach(option=>classChoice.appendChild(option.cloneNode(true)));classChoice.disabled=!selectedTrade||!selectedLevel}trade.addEventListener('change',updateStaffLevels);level.addEventListener('change',updateStaffClasses);updateStaffLevels()}});
 </script></head><body>
 <aside class="sidebar" id="app-sidebar" role="navigation" aria-label="Main navigation"><a class="sidebar-brand" href="/"><img src="/school-logo" onerror="this.style.display='none'" alt="School logo"><div><div class="brand-title">LYCÉE DE MUHURA</div><div class="brand-sub">LYCÉE SAINT ALEXANDRE SAULI</div></div></a>
+<button class="sidebar-collapse-toggle" type="button" data-sidebar-collapse aria-label="Collapse sidebar" aria-pressed="false" onclick="toggleSidebarWidth()"><i class="bi bi-chevron-bar-left" aria-hidden="true"></i><span>Collapse sidebar</span></button>
 {% if current_user.is_authenticated and current_user.role == 'secretary' %}<a class="menu-link" href="/dashboard"><i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span></a>{% endif %}
 {% if current_user.is_authenticated and current_user.role == 'secretary' %}<div class="menu-label">School Sections</div><a class="menu-link" href="/students"><i class="bi bi-people"></i><span>Students</span></a><a class="menu-link" href="/attendance"><i class="bi bi-calendar-check"></i><span>Attendance</span></a><a class="menu-link" href="/admissions"><i class="bi bi-person-plus"></i><span>Admissions</span></a><a class="menu-link" href="/parents"><i class="bi bi-person-hearts"></i><span>Parents / Guardians</span></a><a class="menu-link" href="/appointments"><i class="bi bi-calendar-event"></i><span>Appointments</span></a><a class="menu-link" href="/documents"><i class="bi bi-file-earmark-text"></i><span>Documents</span></a><a class="menu-link" href="/rfid/card-lookup"><i class="bi bi-upc-scan"></i><span>Card Lookup</span></a><a class="menu-link" href="/rfid/report-lost"><i class="bi bi-credit-card-2-front"></i><span>Report Lost Card</span></a><a class="menu-link" href="/reports"><i class="bi bi-bar-chart"></i><span>Reports</span></a><a class="menu-link" href="/announcements"><i class="bi bi-megaphone"></i><span>Announcements</span></a><a class="menu-link" href="/correspondence"><i class="bi bi-envelope-paper"></i><span>Correspondence</span></a><a class="menu-link" href="/letters-certificates"><i class="bi bi-file-earmark-medical"></i><span>Letters & Certificates</span></a><a class="menu-link" href="/timetable"><i class="bi bi-calendar3"></i><span>Timetable</span></a><a class="menu-link" href="/activity-history"><i class="bi bi-clock-history"></i><span>Activity History</span></a>{% endif %}
-<div class="menu-label">Menu</div>{% if current_user.is_authenticated %}<a class="menu-link" href="/dashboard"><i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span></a>{% if current_user.role == 'parent' %}<a class="menu-link" href="/parent/notification-settings"><i class="bi bi-bell"></i><span>Alert Settings</span></a>{% endif %}<a class="menu-link" href="/notifications"><i class="bi bi-bell"></i><span>Notifications</span>{% if unread_notification_count %}<span class="badge bg-danger ms-auto">{{ unread_notification_count }}</span>{% endif %}</a><a class="menu-link" href="/day-schedule"><i class="bi bi-calendar-event"></i><span>Day Schedule</span></a>{% if current_user.role in ['master_admin','head_teacher','teacher','secretary','discipline','patron','matron','parent'] %}<a class="menu-link" href="/meetings"><i class="bi bi-calendar2-week"></i><span>Meeting Panel</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','student','parent','secretary'] %}<a class='menu-link' href='/classrooms'><i class='bi bi-easel2'></i><span>Classrooms</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','student','parent'] %}<a class='menu-link' href='/assessments'><i class='bi bi-pencil-square'></i><span>e-Learning Assessments</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','student'] %}<a class='menu-link' href='/learning-materials'><i class='bi bi-journal-bookmark'></i><span>Learning Materials</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher'] %}<a class="menu-link" href="/attendance"><i class="bi bi-calendar-check"></i><span>Attendance</span></a>{% if current_user.role == 'master_admin' %}<a class="menu-link" href="/attendance-times"><i class="bi bi-clock-history"></i><span>Scan Times</span></a>{% endif %}<a class="menu-link" href="/students"><i class="bi bi-people"></i><span>Students</span></a><a class="menu-link" href="/timetable"><i class="bi bi-calendar3"></i><span>Timetable</span></a><a class="menu-link" href="/grades"><i class="bi bi-journal-text"></i><span>Report Cards</span></a>{% endif %}<div class="menu-label">Management</div>{% if current_user.role in ['master_admin','accountant'] %}<a class="menu-link" href="/fees"><i class="bi bi-cash-stack"></i><span>Fees</span></a>{% endif %}{% if current_user.role in ['parent','student','secretary'] %}<a class="menu-link" href="/fees"><i class="bi bi-cash-stack"></i><span>Fees</span></a>{% endif %}{% if current_user.role in ['master_admin','librarian'] %}<a class="menu-link" href="/library"><i class="bi bi-book"></i><span>Library</span></a>{% endif %}{% if current_user.role in ['teacher','parent','student'] %}<a class="menu-link" href="/library"><i class="bi bi-book"></i><span>Library</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','discipline'] %}<a class="menu-link" href="/discipline"><i class="bi bi-shield-check"></i><span>Discipline</span></a>{% endif %}{% if current_user.role in ['patron','matron','parent','student'] %}<a class="menu-link" href="/discipline"><i class="bi bi-shield-check"></i><span>Discipline</span></a>{% endif %}<a class="menu-link" href="/messages"><i class="bi bi-chat-left-text"></i><span>Messages</span></a><a class="menu-link" href="/official-notices"><i class="bi bi-megaphone"></i><span>Official Notices</span></a>{% if current_user.role in ['master_admin'] %}<div class="menu-label">Administration</div><a class="menu-link" href="/admin"><i class="bi bi-gear"></i><span>Admin Center</span></a>{% endif %}<div class="sidebar-bottom"><a class="menu-link" href="/logout"><i class="bi bi-box-arrow-right"></i><span>Logout</span></a><button class="theme-toggle mt-2" type="button" title="Toggle color theme" aria-label="Toggle color theme" onclick="toggleTheme()"><i class="bi bi-moon-stars" aria-hidden="true"></i> <span>Theme</span></button></div>{% else %}<a class="menu-link" href="/"><i class="bi bi-house"></i><span>Home</span></a><a class="menu-link" href="/login"><i class="bi bi-box-arrow-in-right"></i><span>Sign In</span></a><a class="menu-link" href="/register"><i class="bi bi-person-plus"></i><span>Register</span></a>{% endif %}</aside>
+<div class="menu-label">Menu</div>{% if current_user.is_authenticated %}<a class="menu-link" href="/dashboard"><i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span></a>{% if current_user.role == 'parent' %}<a class="menu-link" href="/parent/notification-settings"><i class="bi bi-bell"></i><span>Alert Settings</span></a>{% endif %}<a class="menu-link" href="/notifications"><i class="bi bi-bell"></i><span>Notifications</span>{% if unread_notification_count %}<span class="badge bg-danger ms-auto">{{ unread_notification_count }}</span>{% endif %}</a><a class="menu-link" href="/day-schedule"><i class="bi bi-calendar-event"></i><span>Day Schedule</span></a>{% if current_user.role in ['master_admin','head_teacher','teacher','secretary','discipline','patron','matron','parent'] %}<a class="menu-link" href="/meetings"><i class="bi bi-calendar2-week"></i><span>Meeting Panel</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','student','parent'] %}<a class='menu-link' href='/assessments'><i class='bi bi-pencil-square'></i><span>e-Learning Assessments</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','student'] %}<a class='menu-link' href='/learning-materials'><i class='bi bi-journal-bookmark'></i><span>Learning Materials</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher'] %}<a class="menu-link" href="/attendance"><i class="bi bi-calendar-check"></i><span>Attendance</span></a>{% if current_user.role == 'master_admin' %}<a class="menu-link" href="/attendance-times"><i class="bi bi-clock-history"></i><span>Scan Times</span></a>{% endif %}<a class="menu-link" href="/students"><i class="bi bi-people"></i><span>Students</span></a><a class="menu-link" href="/timetable"><i class="bi bi-calendar3"></i><span>Timetable</span></a><a class="menu-link" href="/grades"><i class="bi bi-journal-text"></i><span>Report Cards</span></a>{% endif %}<div class="menu-label">Management</div>{% if current_user.role in ['master_admin','accountant'] %}<a class="menu-link" href="/fees"><i class="bi bi-cash-stack"></i><span>Fees</span></a>{% endif %}{% if current_user.role in ['parent','student','secretary'] %}<a class="menu-link" href="/fees"><i class="bi bi-cash-stack"></i><span>Fees</span></a>{% endif %}{% if current_user.role in ['master_admin','librarian'] %}<a class="menu-link" href="/library"><i class="bi bi-book"></i><span>Library</span></a>{% endif %}{% if current_user.role in ['teacher','parent','student'] %}<a class="menu-link" href="/library"><i class="bi bi-book"></i><span>Library</span></a>{% endif %}{% if current_user.role in ['master_admin','head_teacher','teacher','discipline'] %}<a class="menu-link" href="/discipline"><i class="bi bi-shield-check"></i><span>Discipline</span></a>{% endif %}{% if current_user.role in ['patron','matron','parent','student'] %}<a class="menu-link" href="/discipline"><i class="bi bi-shield-check"></i><span>Discipline</span></a>{% endif %}<a class="menu-link" href="/messages"><i class="bi bi-chat-left-text"></i><span>Messages</span></a><a class="menu-link" href="/official-notices"><i class="bi bi-megaphone"></i><span>Official Notices</span></a>{% if current_user.role in ['master_admin'] %}<div class="menu-label">Administration</div><a class="menu-link" href="/admin"><i class="bi bi-gear"></i><span>Admin Center</span></a>{% endif %}<div class="sidebar-bottom"><a class="menu-link" href="/logout"><i class="bi bi-box-arrow-right"></i><span>Logout</span></a><button class="theme-toggle mt-2" type="button" data-theme-toggle title="Toggle color theme" aria-label="Switch to dark mode" aria-pressed="false" onclick="toggleTheme()"><i class="bi bi-moon-stars" aria-hidden="true"></i> <span data-theme-label>Dark theme</span></button></div>{% else %}<a class="menu-link" href="/"><i class="bi bi-house"></i><span>Home</span></a><a class="menu-link" href="/login"><i class="bi bi-box-arrow-in-right"></i><span>Sign In</span></a><a class="menu-link" href="/register"><i class="bi bi-person-plus"></i><span>Register</span></a>{% endif %}</aside>
 <button class="sidebar-backdrop" type="button" aria-label="Close navigation menu" onclick="toggleSidebar(false)"></button>
-<div class="main-shell"><header class="topbar"><div class="topbar-left"><button class="mobile-menu" type="button" aria-label="Open navigation menu" aria-controls="app-sidebar" aria-expanded="false" onclick="toggleSidebar()"><i class="bi bi-list" aria-hidden="true"></i></button><div><div class="page-kicker">School Management System</div><h1 class="page-title">{{ title }}</h1></div></div><div class="topbar-actions"><div class="date-chip"><i class="bi bi-calendar3"></i> {{ year }}</div>{% if current_user.is_authenticated %}<details class="user-navigation" id="user-navigation"><summary class="profile-chip" aria-label="Open user navigation menu"><span class="avatar" aria-hidden="true">{{ current_user.full_name[:1]|upper }}</span><span class="profile-name">{{ current_user.full_name }}</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><div class="user-navigation-panel"><div class="user-navigation-identity"><strong>{{ current_user.full_name }}</strong><span>{{ current_user.role.replace('_', ' ')|title }}</span></div><nav class="user-navigation-links" aria-label="User navigation"><a class="user-navigation-link" href="/dashboard"><i class="bi bi-grid-1x2-fill" aria-hidden="true"></i><span>Dashboard</span></a><a class="user-navigation-link" href="/notifications"><i class="bi bi-bell" aria-hidden="true"></i><span>Notifications</span></a><a class="user-navigation-link" href="/messages"><i class="bi bi-chat-left-text" aria-hidden="true"></i><span>Messages</span></a><a class="user-navigation-link" href="/official-notices"><i class="bi bi-megaphone" aria-hidden="true"></i><span>Official Notices</span></a>{% if current_user.role == 'student' %}<a class="user-navigation-link" href="/student/profile"><i class="bi bi-person" aria-hidden="true"></i><span>My Student Profile</span></a>{% elif current_user.role == 'parent' %}<a class="user-navigation-link" href="/parent/notification-settings"><i class="bi bi-bell-gear" aria-hidden="true"></i><span>Alert Settings</span></a>{% elif current_user.role == 'master_admin' %}<a class="user-navigation-link" href="/admin"><i class="bi bi-gear" aria-hidden="true"></i><span>Admin Center</span></a>{% endif %}<a class="user-navigation-link logout" href="/logout"><i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Log out</span></a></nav></div></details>{% endif %}</div></header><div class="flash">{% with msgs=get_flashed_messages(with_categories=true) %}{% for category,msg in msgs %}<div class="alert alert-{{ 'danger' if category=='danger' else 'success' if category=='success' else 'info' }}"><i class="bi bi-info-circle me-2"></i>{{ msg }}</div>{% endfor %}{% endwith %}</div><main class="content">{{ content|safe }}</main><footer>© {{ year }} · Lycée de Muhura · Lycée Saint Alexandre Sauli de Muhura</footer></div>
+<div class="main-shell"><header class="topbar"><div class="topbar-left"><button class="mobile-menu" type="button" aria-label="Open navigation menu" aria-controls="app-sidebar" aria-expanded="false" onclick="toggleSidebar()"><i class="bi bi-list" aria-hidden="true"></i></button><div><div class="page-kicker">School Management System</div><h1 class="page-title">{{ title }}</h1></div></div><div class="topbar-actions"><button class="theme-switch" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false" title="Switch color theme" onclick="toggleTheme()"><i class="bi bi-moon-stars" aria-hidden="true"></i><span data-theme-label>Dark</span></button><div class="date-chip"><i class="bi bi-calendar3"></i> {{ year }}</div>{% if current_user.is_authenticated %}<details class="user-navigation" id="user-navigation"><summary class="profile-chip" aria-label="Open user navigation menu"><span class="avatar" aria-hidden="true">{{ current_user.full_name[:1]|upper }}</span><span class="profile-name">{{ current_user.full_name }}</span><i class="bi bi-chevron-down" aria-hidden="true"></i></summary><div class="user-navigation-panel"><div class="user-navigation-identity"><strong>{{ current_user.full_name }}</strong><span>{{ current_user.role.replace('_', ' ')|title }}</span></div><nav class="user-navigation-links" aria-label="User navigation"><a class="user-navigation-link" href="/dashboard"><i class="bi bi-grid-1x2-fill" aria-hidden="true"></i><span>Dashboard</span></a><a class="user-navigation-link" href="/notifications"><i class="bi bi-bell" aria-hidden="true"></i><span>Notifications</span></a><a class="user-navigation-link" href="/messages"><i class="bi bi-chat-left-text" aria-hidden="true"></i><span>Messages</span></a><a class="user-navigation-link" href="/official-notices"><i class="bi bi-megaphone" aria-hidden="true"></i><span>Official Notices</span></a>{% if current_user.role == 'student' %}<a class="user-navigation-link" href="/student/profile"><i class="bi bi-person" aria-hidden="true"></i><span>My Student Profile</span></a>{% elif current_user.role == 'parent' %}<a class="user-navigation-link" href="/parent/notification-settings"><i class="bi bi-bell-gear" aria-hidden="true"></i><span>Alert Settings</span></a>{% elif current_user.role == 'master_admin' %}<a class="user-navigation-link" href="/admin"><i class="bi bi-gear" aria-hidden="true"></i><span>Admin Center</span></a>{% endif %}<a class="user-navigation-link logout" href="/logout"><i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Log out</span></a></nav></div></details>{% endif %}</div></header><div class="flash">{% with msgs=get_flashed_messages(with_categories=true) %}{% for category,msg in msgs %}<div class="alert alert-{{ 'danger' if category=='danger' else 'success' if category=='success' else 'info' }}"><i class="bi bi-info-circle me-2"></i>{{ msg }}</div>{% endfor %}{% endwith %}</div><main class="content">{{ content|safe }}</main><footer>© {{ year }} · Lycée de Muhura · Lycée Saint Alexandre Sauli de Muhura</footer></div>
 <script>document.addEventListener('click',event=>{const menu=document.getElementById('user-navigation');if(menu?.open&&!menu.contains(event.target))menu.open=false});document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;const menu=document.getElementById('user-navigation');if(menu?.open){menu.open=false;menu.querySelector('summary')?.focus()}});</script>
 <script>
 document.addEventListener('DOMContentLoaded',()=>{

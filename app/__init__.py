@@ -8,7 +8,10 @@ from migrations.versions.v20261022_02_add_messaging_conversations import upgrade
 from migrations.versions.v20261022_03_add_official_notice_workflow import upgrade as upgrade_official_notice_workflow
 from migrations.versions.v20261023_01_expand_parent_school_meetings import upgrade as upgrade_parent_school_meetings
 from migrations.versions.v20261023_02_add_meeting_workflows import upgrade as upgrade_meeting_workflows
-from migrations.versions.v20261023_03_add_student_enrollment_history import upgrade as upgrade_student_enrollment_history
+from migrations.versions.v20261023_04_add_room_reservations import upgrade as upgrade_room_reservations
+from migrations.versions.v20261023_05_add_meeting_room_checkin import upgrade as upgrade_meeting_room_checkin
+from migrations.versions.v20261023_06_add_microsoft_meeting_sync import upgrade as upgrade_microsoft_meeting_sync
+from migrations.versions.v20261023_07_add_panel_discussion_format import upgrade as upgrade_panel_discussion_format
 
 def create_app(config_class=Config):
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -28,7 +31,7 @@ def create_app(config_class=Config):
                             Meeting, MeetingParticipant, MeetingAttendance, MeetingAgendaItem,
                             MeetingMinutes, MeetingMinutesRevision, MeetingActionItem,
                             MeetingActionComment, MeetingAuditEvent, MeetingNotificationLog,
-                            StudentEnrollment)
+                            RoomReservation)
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(User, int(user_id))
@@ -46,7 +49,10 @@ def create_app(config_class=Config):
             upgrade_official_notice_workflow(connection)
             upgrade_parent_school_meetings(connection)
             upgrade_meeting_workflows(connection)
-            upgrade_student_enrollment_history(connection)
+            upgrade_room_reservations(connection)
+            upgrade_meeting_room_checkin(connection)
+            upgrade_microsoft_meeting_sync(connection)
+            upgrade_panel_discussion_format(connection)
         if inspect(db.engine).has_table("user"):
             db.metadata.create_all(
                 bind=db.engine,
@@ -62,7 +68,8 @@ def create_app(config_class=Config):
                         MeetingAttendance.__table__, MeetingAgendaItem.__table__, MeetingMinutes.__table__,
                         MeetingMinutesRevision.__table__, MeetingActionItem.__table__,
                         MeetingActionComment.__table__, MeetingAuditEvent.__table__,
-                        MeetingNotificationLog.__table__, StudentEnrollment.__table__],
+                        MeetingNotificationLog.__table__,
+                        RoomReservation.__table__],
             )
             user_columns = {column["name"] for column in inspect(db.engine).get_columns("user")}
             for column_name, column_type in (
@@ -85,8 +92,6 @@ def create_app(config_class=Config):
                 "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship"
             )):
                 db.session.commit()
-            with db.engine.begin() as connection:
-                upgrade_student_enrollment_history(connection)
         if inspect(db.engine).has_table("pending_card"):
             pending_card_columns = {
                 column["name"] for column in inspect(db.engine).get_columns("pending_card")

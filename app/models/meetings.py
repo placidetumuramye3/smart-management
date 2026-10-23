@@ -43,6 +43,14 @@ class Meeting(db.Model):
     status = db.Column(db.String(24), nullable=False, default="Scheduled", index=True)
     approval_status = db.Column(db.String(24), nullable=False, default="not_required", index=True)
     confidentiality = db.Column(db.String(24), nullable=False, default="participants")
+    qa_duration_minutes = db.Column(db.Integer)
+    panel_perspectives = db.Column(db.String(1000))
+    room_released_at = db.Column(db.String(19))
+    room_release_reason = db.Column(db.String(160))
+    microsoft_event_id = db.Column(db.String(255))
+    microsoft_join_url = db.Column(db.String(1000))
+    microsoft_sync_status = db.Column(db.String(24), nullable=False, default="not_configured")
+    microsoft_sync_error = db.Column(db.String(500))
     created_at = db.Column(db.String(19), nullable=False)
     updated_at = db.Column(db.String(19), nullable=False)
     organizer = db.relationship("User", foreign_keys=[organizer_id])
@@ -57,6 +65,21 @@ class Meeting(db.Model):
     )
     minutes = db.relationship("MeetingMinutes", back_populates="meeting", uselist=False, cascade="all, delete-orphan")
     actions = db.relationship("MeetingActionItem", back_populates="meeting", cascade="all, delete-orphan")
+
+
+class RoomReservation(db.Model):
+    __tablename__ = "room_reservation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    room_name = db.Column(db.String(160), nullable=False, index=True)
+    purpose = db.Column(db.String(160), nullable=False, default="Quick room booking")
+    reserved_by_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    starts_at = db.Column(db.DateTime, nullable=False, index=True)
+    ends_at = db.Column(db.DateTime, nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default="active", index=True)
+    created_at = db.Column(db.DateTime, nullable=False)
+    released_at = db.Column(db.DateTime)
+    reserved_by = db.relationship("User", foreign_keys=[reserved_by_id])
 
 
 class MeetingParticipant(db.Model):
