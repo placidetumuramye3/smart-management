@@ -23,4 +23,20 @@ Default bootstrap admin (development only): `admin` / `admin1234`. Change it imm
 - `tests`: pytest tests
 
 This first refactor intentionally preserves the existing database schema. The next phase should introduce RFIDCard/RFIDScan/RFIDDevice through migrations rather than silently breaking existing data.
+## Parent and School Meeting Panel
+
+The `/meetings` workspace provides scoped invitations, approval, secure meeting conversations, attendance, versioned minutes, action tracking, guardian verification, and reports. `/appointments` remains available for parent appointment requests.
+
+- [Meeting API contract](docs/meetings-api.md)
+- [Meeting schema](docs/meeting-schema.md)
+- [Security and deployment notes](docs/meeting-security-and-deployment.md)
+- [Repository analysis and implementation record](MEETING_PANEL_IMPLEMENTATION.md)
+
+Schedule `flask --app run.py send-meeting-reminders` hourly and `flask --app run.py process-meeting-actions` daily to run reminders and overdue-action escalation.
+
+## Enrollment and Integrated-System Status
+
+Student records remain canonical `User` rows. Staff enrollment history and transfer workflows are documented in [Student Enrollment History](docs/student-enrollment-schema.md). The current repository gap assessment, implementation sequence, and verified test count are in [the integrated-system analysis](docs/system-gap-analysis.md).
+
+The `/classrooms` page groups existing subject assignments, reviewed lesson plans, published resources, and assignments. Access follows active enrollment, teacher assignment, and verified guardian relationships; it reuses existing academic records.
 "# smart-management-school" 

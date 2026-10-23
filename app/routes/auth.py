@@ -6,10 +6,10 @@ from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
 from app.extensions import db
-from app.models import User, Attendance, PendingCard, FeeTransaction, Book, DisciplineCase, SchoolMessage, Grade, TimetableEntry, Setting
+from app.models import User, Attendance, PendingCard, FeeTransaction, Book, DisciplineCase, SchoolMessage, Grade, TimetableEntry, Setting, StudentGuardian
 from app.utils.constants import *
 from app.utils.decorators import role_required
-from app.utils.helpers import get_setting, set_setting, attendance_for_student
+from app.utils.helpers import get_setting, set_setting, attendance_for_student, now_string
 from app.utils.rendering import page
 
 def register():
@@ -49,6 +49,13 @@ def register():
                 db.session.flush()
                 for student in students:
                     student.parent_id = u.id
+                    db.session.add(StudentGuardian(
+                        student_id=student.id,
+                        guardian_id=u.id,
+                        relationship="Parent / Guardian",
+                        status="verified",
+                        verified_at=now_string(),
+                    ))
                 db.session.commit()
                 flash("Parent account created and student records linked. You can now sign in.", "success")
                 return redirect(url_for("login"))

@@ -9,7 +9,7 @@ from app.extensions import db
 from app.models import User, Attendance, PendingCard, FeeTransaction, Book, DisciplineCase, SchoolMessage, Grade, TimetableEntry, Setting
 from app.utils.constants import *
 from app.utils.decorators import role_required
-from app.utils.helpers import get_setting, set_setting, attendance_for_student, teacher_assigned_classes, teacher_can_access_class
+from app.utils.helpers import get_setting, set_setting, attendance_for_student, teacher_assigned_classes, teacher_can_access_class, linked_children
 from app.utils.rendering import page
 from app.utils.decorators import permission_for
 from markupsafe import escape
@@ -82,13 +82,15 @@ def discipline():
     elif current_user.role == "student":
         student_query = student_query.filter_by(id=current_user.id)
     elif current_user.role == "parent":
-        student_query = student_query.filter_by(parent_id=current_user.id)
+        student_query = student_query.filter(User.id.in_([child.id for child in linked_children(current_user.id)]))
     students = student_query.order_by(User.full_name).all()
     case_query = DisciplineCase.query.join(User, DisciplineCase.student_id == User.id)
     if current_user.role == "student":
         case_query = case_query.filter(DisciplineCase.student_id == current_user.id)
     elif current_user.role == "parent":
-        case_query = case_query.filter(User.parent_id == current_user.id)
+        case_query = case_query.filter(DisciplineCase.student_id.in_(
+            [child.id for child in linked_children(current_user.id)]
+        ))
     elif current_user.role == "teacher":
         case_query = case_query.filter(db.func.lower(User.class_name).in_({name.casefold() for name in teacher_assigned_classes(current_user)}))
     elif current_user.role in {"discipline", "patron", "matron"}:

@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import hmac
 import json
@@ -14,6 +15,8 @@ from app.models import (
     MessageParticipant,
     MessagePermission,
     MessageReport,
+    Meeting,
+    MeetingParticipant,
     OfficialNotice,
     OfficialNoticeAuditEvent,
     OfficialNoticePermission,
@@ -23,7 +26,9 @@ from app.models import (
 )
 from app.utils.constants import ROLE_ACCESS
 from app.utils.decorators import permission_for
-from app.utils.helpers import now_string, teacher_assigned_classes
+from app.utils.helpers import (
+    guardian_ids_for_student, linked_children, now_string, teacher_assigned_classes,
+)
 from app.utils.notifications import message_recipients, notify_users
 from app.utils.rendering import page
 
@@ -83,6 +88,18 @@ NOTICE_PERMISSION_FIELDS = (
     ("can_publish", "Publish notices"),
     ("can_revoke", "Revoke published notices"),
 )
+NOTICE_CATEGORIES = {
+    "general": ("General school notice", False),
+    "academic": ("General academic notice", False),
+    "student_records": ("Student records or results", True),
+    "student_welfare": ("Student welfare", True),
+    "safeguarding": ("Safeguarding", True),
+    "financial": ("Financial information", True),
+    "disciplinary": ("Disciplinary information", True),
+    "legal_compliance": ("Legal or compliance information", True),
+    "security": ("Security information", True),
+    "other_sensitive": ("Other sensitive information", True),
+}
 
 
 def _role_label(role):
@@ -174,11 +191,7 @@ def _support_staff_for_classes(class_names):
 
 
 def _children_for_parent(parent):
-    return User.query.filter_by(
-        parent_id=parent.id,
-        role="student",
-        is_active_account=True,
-    ).order_by(User.full_name).all()
+    return [child for child in linked_children(parent.id) if child.is_active_account]
 
 
 def _allowed_user_options(sender):
@@ -191,7 +204,8 @@ def _allowed_user_options(sender):
         classes = teacher_assigned_classes(sender)
         students = _students_in_classes(classes)
         target_ids.update(student.id for student in students)
-        target_ids.update(student.parent_id for student in students if student.parent_id)
+        for student in students:
+            target_ids.update(guardian_ids_for_student(student.id))
         target_ids.update(user.id for user in _teachers_for_classes(classes))
         target_ids.update(user.id for user in _support_staff_for_classes(classes))
         target_ids.update(user.id for user in _active_users(OFFICE_ROLES))
@@ -215,7 +229,8 @@ def _allowed_user_options(sender):
         classes = {sender.class_name} if sender.class_name else set()
         students = _students_in_classes(classes)
         target_ids.update(student.id for student in students)
-        target_ids.update(student.parent_id for student in students if student.parent_id)
+        for student in students:
+            target_ids.update(guardian_ids_for_student(student.id))
         target_ids.update(user.id for user in _active_users(OFFICE_ROLES))
 
     target_ids.discard(sender.id)
@@ -380,9 +395,13 @@ def _verify_audit_chain():
                     conversation_id=event.conversation_id
                 ).all()
                 actual_ids = {row.user_id for row in participant_rows}
-                if actual_ids != existing_expected_ids:
-                    return False, records
                 conversation = db.session.get(MessageConversation, event.conversation_id)
+                if conversation and conversation.meeting_id:
+                    membership_valid = existing_expected_ids.issubset(actual_ids)
+                else:
+                    membership_valid = actual_ids == existing_expected_ids
+                if not membership_valid:
+                    return False, records
                 if (not conversation or conversation.title != message.subject
                         or conversation.created_by_id != event.actor_id
                         or conversation.created_by_name != event.actor_name
@@ -410,6 +429,18 @@ def _verify_audit_chain():
                         details.get("resolution_sha256", ""),
                     )):
                 return False, records
+        elif event.event_type == "meeting_participant_added":
+            conversation = db.session.get(MessageConversation, event.conversation_id)
+            meeting_id = details.get("meeting_id")
+            user_id = details.get("user_id")
+            if (not conversation or conversation.meeting_id != meeting_id
+                    or not MeetingParticipant.query.filter_by(
+                        meeting_id=meeting_id, user_id=user_id
+                    ).first()
+                    or not MessageParticipant.query.filter_by(
+                        conversation_id=event.conversation_id, user_id=user_id
+                    ).first()):
+                return False, records
     latest_access_events = {}
     for event in records:
         if event.event_type == "message_send_access_updated":
@@ -436,9 +467,19 @@ def _participants(conversation_id):
 
 
 def _is_participant(conversation_id, user_id):
-    return MessageParticipant.query.filter_by(
+    participant = MessageParticipant.query.filter_by(
         conversation_id=conversation_id, user_id=user_id
-    ).first() is not None
+    ).first()
+    if not participant:
+        return False
+    conversation = db.session.get(MessageConversation, conversation_id)
+    if conversation and conversation.meeting_id:
+        from app.models import Meeting
+        from app.services.meeting_service import can_view_meeting
+        user = db.session.get(User, user_id)
+        meeting = db.session.get(Meeting, conversation.meeting_id)
+        return can_view_meeting(user, meeting)
+    return True
 
 
 def _visible_conversations(user):
@@ -452,6 +493,8 @@ def _visible_conversations(user):
     for conversation in conversations:
         first_message = SchoolMessage.query.filter_by(conversation_id=conversation.id).order_by(SchoolMessage.id.asc()).first()
         if not first_message:
+            continue
+        if conversation.meeting_id and not _is_participant(conversation.id, user.id):
             continue
         if first_message.approval_status == "pending":
             if user.id != conversation.created_by_id and not _has_notice_permission(user, "can_approve"):
@@ -576,7 +619,6 @@ def _send_new_conversation(sender, subject, body, audience, recipient_mode,
     if len(targets) > 1 or audience.startswith("role:") or audience == "all":
         conversation_type = "class_group" if recipient_mode == "class_group" else "group"
 
-    requires_approval = False
     conversation = MessageConversation(
         title=subject,
         conversation_type=conversation_type,
@@ -591,8 +633,9 @@ def _send_new_conversation(sender, subject, body, audience, recipient_mode,
     conversation_targets = list(targets)
     if sender.role != "student" and len(targets) == 1:
         parent_ids = {
-            target.parent_id for target in targets
-            if target.role == "student" and target.parent_id
+            guardian_id
+            for target in targets if target.role == "student"
+            for guardian_id in guardian_ids_for_student(target.id)
         }
         for parent in _users_by_ids(parent_ids):
             if parent.role == "parent" and all(existing.id != parent.id for existing in conversation_targets):
@@ -612,14 +655,14 @@ def _send_new_conversation(sender, subject, body, audience, recipient_mode,
         body=body,
         message_type=message_type,
         conversation_id=conversation.id,
-        approval_status="pending" if requires_approval else "approved",
+        approval_status="approved",
         created_at=timestamp,
     )
     db.session.add(message)
     db.session.flush()
 
     body_digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    _record_audit(sender, "message_submitted" if requires_approval else "message_sent", {
+    _record_audit(sender, "message_sent", {
         "subject": subject,
         "message_type": message_type,
         "approval_status": message.approval_status,
@@ -629,24 +672,14 @@ def _send_new_conversation(sender, subject, body, audience, recipient_mode,
         "body_sha256": body_digest,
     }, conversation_id=conversation.id, message_id=message.id)
 
-    if requires_approval:
-        approver_ids = {user.id for user in _active_users(APPROVER_ROLES)}
-        notify_users(
-            approver_ids,
-            "Official Instruction Approval",
-            f"Approval requested: {subject}",
-            f"{sender.full_name} ({_role_label(sender.role)}) submitted an official instruction for approval. Open the Messaging Hub to review it.",
-            "/messages?view=review",
-        )
-    else:
-        notify_recipients = {target.id for target in conversation_targets}
-        notify_users(
-            notify_recipients,
-            MESSAGE_TYPE_LABELS.get(message_type, "School Message"),
-            subject,
-            f"From: {sender.full_name} ({_role_label(sender.role)}). Authority: {_role_authority(sender.role)}.\n\n{body}",
-            f"/messages?conversation={conversation.id}",
-        )
+    notify_recipients = {target.id for target in conversation_targets}
+    notify_users(
+        notify_recipients,
+        MESSAGE_TYPE_LABELS.get(message_type, "School Message"),
+        subject,
+        f"From: {sender.full_name} ({_role_label(sender.role)}). Authority: {_role_authority(sender.role)}.\n\n{body}",
+        f"/messages?conversation={conversation.id}",
+    )
 
     db.session.commit()
     return conversation
@@ -660,6 +693,15 @@ def _send_reply(sender, conversation, body):
     first_message = SchoolMessage.query.filter_by(conversation_id=conversation.id).order_by(SchoolMessage.id.asc()).first()
     if not first_message or first_message.approval_status != "approved":
         abort(403)
+    if conversation.meeting_id:
+        cutoff = (datetime.datetime.now() - datetime.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        recent = SchoolMessage.query.filter(
+            SchoolMessage.conversation_id == conversation.id,
+            SchoolMessage.sender_id == sender.id,
+            SchoolMessage.created_at >= cutoff,
+        ).count()
+        if recent >= 30:
+            abort(429)
     timestamp = now_string()
     latest = _conversation_latest(conversation)
     message = SchoolMessage(
@@ -694,47 +736,76 @@ def _send_reply(sender, conversation, body):
     db.session.commit()
 
 
-def _approve_instruction(actor, message, decision, note=""):
-    if not _has_notice_permission(actor, "can_approve"):
-        abort(403)
-    if message.message_type != "instruction" or message.approval_status != "pending":
-        abort(400)
-    if actor.id == message.sender_id:
-        abort(403)
+def create_meeting_conversation(meeting, sender, recipients, send_notifications=True):
+    """Create the secure, audited participant thread associated with a meeting."""
+    existing = MessageConversation.query.filter_by(meeting_id=meeting.id).first()
+    if existing:
+        return existing
+    targets = {user.id: user for user in recipients if user and user.is_active_account}
+    targets.pop(sender.id, None)
     timestamp = now_string()
-    accepted = decision == "approve"
-    message.approval_status = "approved" if accepted else "rejected"
-    message.approved_by_id = actor.id
-    message.approved_by_name = actor.full_name
-    message.approved_at = timestamp
-    if message.conversation:
-        message.conversation.conversation_type = "official_instruction" if accepted else "instruction_rejected"
-    _record_audit(actor, "instruction_approved" if accepted else "instruction_rejected", {
+    conversation = MessageConversation(
+        title=meeting.title[:160],
+        conversation_type="meeting",
+        created_by_id=sender.id,
+        created_by_name=sender.full_name,
+        created_by_role=sender.role,
+        created_at=timestamp,
+        meeting_id=meeting.id,
+    )
+    db.session.add(conversation)
+    db.session.flush()
+    _add_participant(conversation, sender, timestamp)
+    for target in targets.values():
+        _add_participant(conversation, target, timestamp)
+    recipient_ids = sorted(targets)
+    message = SchoolMessage(
+        sender_id=sender.id,
+        sender_name=sender.full_name,
+        sender_role=sender.role,
+        recipient_role=None,
+        subject=meeting.title[:160],
+        body="A private meeting conversation was opened. Use this thread for messages about this meeting.",
+        message_type="general",
+        conversation_id=conversation.id,
+        approval_status="approved",
+        created_at=timestamp,
+    )
+    db.session.add(message)
+    db.session.flush()
+    _record_audit(sender, "message_sent", {
         "subject": message.subject,
-        "sender_id": message.sender_id,
-        "decision_note": note[:MAX_REPORT_LENGTH],
-    }, conversation_id=message.conversation_id, message_id=message.id)
-    if accepted:
-        recipients = {
-            participant.user_id for participant in _participants(message.conversation_id)
-            if participant.user_id != message.sender_id
-        }
+        "message_type": message.message_type,
+        "approval_status": message.approval_status,
+        "recipient_count": len(recipient_ids),
+        "recipient_ids": recipient_ids,
+        "recipient_roles": sorted({user.role for user in targets.values()}),
+        "body_sha256": hashlib.sha256(message.body.encode("utf-8")).hexdigest(),
+    }, conversation_id=conversation.id, message_id=message.id)
+    if recipient_ids and send_notifications:
         notify_users(
-            recipients,
-            "Approved Official Instruction",
-            message.subject,
-            f"An official instruction from {message.sender_name or 'school staff'} has been approved by {actor.full_name} ({_role_label(actor.role)}). Open the Messaging Hub to read it.",
-            f"/messages?conversation={message.conversation_id}",
+            set(recipient_ids), "Meeting message", "Private meeting thread opened",
+            "A private conversation is available for a meeting you were invited to.",
+            f"/messages?conversation={conversation.id}",
         )
-    else:
-        notify_users(
-            {message.sender_id},
-            "Official Instruction Not Approved",
-            message.subject,
-            f"Your instruction was not approved by {actor.full_name}. {note[:MAX_REPORT_LENGTH]}",
-            f"/messages?conversation={message.conversation_id}",
-        )
-    db.session.commit()
+    return conversation
+
+
+def add_meeting_conversation_participant(meeting, sender, recipient):
+    """Add an approved meeting invitee to the linked audited message thread."""
+    conversation = MessageConversation.query.filter_by(meeting_id=meeting.id).first()
+    if not conversation:
+        return create_meeting_conversation(meeting, sender, [sender, recipient], send_notifications=False)
+    existing = MessageParticipant.query.filter_by(
+        conversation_id=conversation.id, user_id=recipient.id,
+    ).first()
+    if existing:
+        return conversation
+    _add_participant(conversation, recipient, now_string())
+    _record_audit(sender, "meeting_participant_added", {
+        "meeting_id": meeting.id, "user_id": recipient.id,
+    }, conversation_id=conversation.id)
+    return conversation
 
 
 def _report_message(reporter, message, reason):
@@ -868,23 +939,34 @@ def _notice_status_label(notice):
     if notice.status == "pending_approval":
         return "Pending approval"
     if notice.status == "awaiting_sensitive_approval":
-        return "Awaiting additional sensitive notice approval"
+        first = notice.approved_by_name or "Authorized approver"
+        role = f" ({_role_label(notice.approved_by_role)})" if notice.approved_by_role else ""
+        return f"Awaiting additional approval; first review by {first}{role}"
     if notice.status == "approved":
         first = notice.approved_by_name or "Authorized approver"
+        first_role = f" ({_role_label(notice.approved_by_role)})" if notice.approved_by_role else ""
         if notice.is_sensitive:
             second = notice.sensitive_approved_by_name or "Second authorized approver"
-            return f"Approved by {first} and {second}; awaiting publication"
-        return f"Approved by {first}; awaiting publication"
+            second_role = f" ({_role_label(notice.sensitive_approved_by_role)})" if notice.sensitive_approved_by_role else ""
+            return f"Approved by {first}{first_role} and {second}{second_role}; awaiting publication"
+        return f"Approved by {first}{first_role}; awaiting publication"
     if notice.status == "published":
         publisher = notice.published_by_name or "Authorized publisher"
-        return f"Published by {publisher}"
+        role = f" ({_role_label(notice.published_by_role)})" if notice.published_by_role else ""
+        return f"Published by {publisher}{role}"
     if notice.status == "revoked":
         revoker = notice.revoked_by_name or "Authorized revoker"
-        return f"Revoked by {revoker}"
+        role = f" ({_role_label(notice.revoked_by_role)})" if notice.revoked_by_role else ""
+        return f"Revoked by {revoker}{role}"
     if notice.status == "rejected":
-        approver = notice.approved_by_name or "Authorized approver"
-        return f"Rejected by {approver}"
+        approver = notice.rejected_by_name or notice.approved_by_name or "Authorized approver"
+        role = f" ({_role_label(notice.rejected_by_role)})" if notice.rejected_by_role else ""
+        return f"Rejected by {approver}{role}"
     return notice.status.replace("_", " ").title()
+
+
+def _notice_category_label(category):
+    return NOTICE_CATEGORIES.get(category, ("Unclassified notice", True))[0]
 
 
 def _notice_is_visible_to(notice, user):
@@ -952,8 +1034,12 @@ def _render_official_notice(notice, csrf_token, user):
             and notice.status == "awaiting_sensitive_approval"
             and user.id not in {notice.created_by_id, notice.approved_by_id}):
         actions.append(_notice_action_form(
-            csrf_token, "notice_sensitive_approval", notice, "Approve sensitive notice", "success",
-        ))
+            csrf_token, "notice_sensitive_review", notice, "Approve sensitive notice", "success",
+        ).replace("<button", "<button name='decision' value='approve'", 1))
+        actions.append(_notice_action_form(
+            csrf_token, "notice_sensitive_review", notice, "Reject sensitive notice", "outline-danger",
+            "Reason required when rejecting",
+        ).replace("<button", "<button name='decision' value='reject'", 1))
     if grants and grants.can_publish and notice.status == "approved":
         actions.append(_notice_action_form(
             csrf_token, "notice_publish", notice, "Publish notice", "success",
@@ -983,6 +1069,7 @@ def _render_official_notice(notice, csrf_token, user):
         "<article class='official-notice-card'>"
         f"<div class='notice-card-heading'><div><span class='pill'>{escape(_notice_status_label(notice))}</span> "
         f"{sensitive_badge}"
+        f"<p class='notice-category'>{escape(_notice_category_label(notice.category))}</p>"
         f"<h3>{escape(notice.subject)}</h3></div><time>{escape(notice.created_at)}</time></div>"
         f"<p class='notice-sender'>{escape(sender_label)}</p>"
         f"<p class='notice-approval'>Approval status: {escape(_notice_status_label(notice))}</p>"
@@ -1038,11 +1125,12 @@ def _notice_audit_panel():
             f"<td>{escape(event.event_type.replace('_', ' ').title())}</td><td>{escape(event.notice_id or '—')}</td>"
             f"<td><code>{escape(event.event_hash[:16])}…</code><br><small>{details}</small></td></tr>"
         )
+    audit_rows = "".join(rows) or "<tr><td colspan='5' class='muted'>No official notice actions recorded.</td></tr>"
     return (
         "<section class='panel'><h2>Official Notice audit log</h2>"
         f"<p class='muted'>Notice creation, approvals, publication, revocation, and permission changes are recorded. {chain_status}</p>"
         f"<div class='table-responsive'><table class='table'><thead><tr><th>Time</th><th>Verified actor</th><th>Action</th><th>Notice</th><th>Record</th></tr></thead>"
-        f"<tbody>{''.join(rows) or '<tr><td colspan=\'5\' class=\'muted\'>No official notice actions recorded.</td></tr>'}</tbody></table></div></section>"
+        f"<tbody>{audit_rows}</tbody></table></div></section>"
     )
 
 
@@ -1068,7 +1156,7 @@ def _notify_notice_reviewers(notice, sensitive=False):
     )
 
 
-def _create_official_notice(actor, subject, body, recipient_ids, sensitive):
+def _create_official_notice(actor, subject, body, recipient_ids, category):
     if not _has_notice_permission(actor, "can_create"):
         abort(403)
     if not subject or len(subject) > MAX_SUBJECT_LENGTH:
@@ -1077,6 +1165,9 @@ def _create_official_notice(actor, subject, body, recipient_ids, sensitive):
     if not body or len(body) > MAX_BODY_LENGTH:
         flash(f"Notice body must contain 1 to {MAX_BODY_LENGTH} characters.", "danger")
         return False
+    if category not in NOTICE_CATEGORIES:
+        abort(400)
+    sensitive = NOTICE_CATEGORIES[category][1]
     if not recipient_ids or len(recipient_ids) > 500:
         flash("Choose between 1 and 500 active recipients.", "danger")
         return False
@@ -1095,6 +1186,7 @@ def _create_official_notice(actor, subject, body, recipient_ids, sensitive):
         subject=subject,
         body=body,
         recipient_ids_json=json.dumps(selected_ids, separators=(",", ":")),
+        category=category,
         is_sensitive=bool(sensitive),
         status="pending_approval",
         created_at=now_string(),
@@ -1103,6 +1195,7 @@ def _create_official_notice(actor, subject, body, recipient_ids, sensitive):
     db.session.flush()
     _record_notice_audit(actor, "notice_created", {
         "subject": subject,
+        "category": category,
         "recipient_ids": selected_ids,
         "sensitive": bool(sensitive),
         "body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
@@ -1124,12 +1217,12 @@ def _review_official_notice(actor, notice, decision, note):
         flash("A rejection reason of 1 to 1,000 characters is required.", "danger")
         return False
 
-    notice.approved_by_id = actor.id
-    notice.approved_by_name = actor.full_name
-    notice.approved_by_role = actor.role
-    notice.approved_at = now_string()
     if decision == "reject":
         notice.status = "rejected"
+        notice.rejected_by_id = actor.id
+        notice.rejected_by_name = actor.full_name
+        notice.rejected_by_role = actor.role
+        notice.rejected_at = now_string()
         notice.decision_note = note
         event_type = "notice_rejected"
         notify_users(
@@ -1137,10 +1230,18 @@ def _review_official_notice(actor, notice, decision, note):
             f"Your notice was not approved by {actor.full_name}. {note}", "/official-notices",
         )
     elif notice.is_sensitive:
+        notice.approved_by_id = actor.id
+        notice.approved_by_name = actor.full_name
+        notice.approved_by_role = actor.role
+        notice.approved_at = now_string()
         notice.status = "awaiting_sensitive_approval"
         event_type = "notice_approved_pending_sensitive_review"
         _notify_notice_reviewers(notice, sensitive=True)
     else:
+        notice.approved_by_id = actor.id
+        notice.approved_by_name = actor.full_name
+        notice.approved_by_role = actor.role
+        notice.approved_at = now_string()
         notice.status = "approved"
         event_type = "notice_approved"
     _record_notice_audit(actor, event_type, {
@@ -1153,23 +1254,45 @@ def _review_official_notice(actor, notice, decision, note):
     return True
 
 
-def _approve_sensitive_official_notice(actor, notice):
+def _review_sensitive_official_notice(actor, notice, decision, note):
     if not _has_notice_permission(actor, "can_approve_sensitive"):
         abort(403)
     if (not notice.is_sensitive or notice.status != "awaiting_sensitive_approval"
             or actor.id in {notice.created_by_id, notice.approved_by_id}):
         abort(403)
-    notice.sensitive_approved_by_id = actor.id
-    notice.sensitive_approved_by_name = actor.full_name
-    notice.sensitive_approved_by_role = actor.role
-    notice.sensitive_approved_at = now_string()
-    notice.status = "approved"
-    _record_notice_audit(actor, "notice_sensitive_approval_granted", {
+    if decision not in {"approve", "reject"}:
+        abort(400)
+    if decision == "reject":
+        if not note or len(note) > MAX_REPORT_LENGTH:
+            flash("A rejection reason of 1 to 1,000 characters is required.", "danger")
+            return False
+        notice.status = "rejected"
+        notice.rejected_by_id = actor.id
+        notice.rejected_by_name = actor.full_name
+        notice.rejected_by_role = actor.role
+        notice.rejected_at = now_string()
+        notice.decision_note = note
+        event_type = "notice_sensitive_rejected"
+        notify_users(
+            {notice.created_by_id}, "Sensitive Official Notice Not Approved", notice.subject,
+            f"Your sensitive notice was not approved by {actor.full_name}. {note}", "/official-notices",
+        )
+    else:
+        notice.sensitive_approved_by_id = actor.id
+        notice.sensitive_approved_by_name = actor.full_name
+        notice.sensitive_approved_by_role = actor.role
+        notice.sensitive_approved_at = now_string()
+        notice.status = "approved"
+        event_type = "notice_sensitive_approval_granted"
+    _record_notice_audit(actor, event_type, {
+        "decision": decision,
         "status": notice.status,
+        "note": note[:MAX_REPORT_LENGTH],
         "first_approver_id": notice.approved_by_id,
         "sensitive": True,
     }, notice)
     db.session.commit()
+    return True
 
 
 def _publish_official_notice(actor, notice):
@@ -1278,13 +1401,13 @@ def official_notices():
                 request.form.get("subject", "").strip(),
                 request.form.get("body", "").strip(),
                 request.form.getlist("recipient_ids"),
-                request.form.get("is_sensitive") == "1",
+                request.form.get("category", "").strip(),
             )
             if created:
                 flash("Official Notice submitted for approval. Recipients will see it after approval and publication.", "success")
                 return redirect(url_for("official_notices"))
         elif action in {
-            "notice_review", "notice_sensitive_approval", "notice_publish", "notice_revoke",
+            "notice_review", "notice_sensitive_review", "notice_publish", "notice_revoke",
         }:
             notice = db.session.get(OfficialNotice, request.form.get("notice_id", type=int))
             if not notice:
@@ -1296,9 +1419,12 @@ def official_notices():
                 )
                 if saved:
                     flash("Notice review recorded in the audit log.", "success")
-            elif action == "notice_sensitive_approval":
-                _approve_sensitive_official_notice(current_user, notice)
-                flash("Additional sensitive notice approval recorded.", "success")
+            elif action == "notice_sensitive_review":
+                saved = _review_sensitive_official_notice(
+                    current_user, notice, request.form.get("decision", ""), note,
+                )
+                if saved:
+                    flash("Sensitive notice decision recorded in the audit log.", "success")
             elif action == "notice_publish":
                 _publish_official_notice(current_user, notice)
                 flash("Official Notice published to its selected recipients.", "success")
@@ -1328,16 +1454,20 @@ def official_notices():
             f"<option value='{user.id}'>{escape(user.full_name)} ({escape(_role_label(user.role))})</option>"
             for user in active_users
         )
+        category_options = "".join(
+            f"<option value='{escape(key)}'>{escape(label)}</option>"
+            for key, (label, _sensitive) in NOTICE_CATEGORIES.items()
+        )
         compose_form = (
             "<section class='panel'><h2>Create Official Notice</h2>"
             f"<form method='post' class='official-notice-compose'><input type='hidden' name='csrf_token' value='{escape(csrf_token)}'>"
             "<input type='hidden' name='action' value='notice_create'>"
             f"<label class='form-label' for='notice-recipients'>Recipients</label><select class='form-select' id='notice-recipients' name='recipient_ids' multiple required size='6'>{recipient_options}</select>"
             "<small class='muted'>Select one or more active accounts. Recipients can read a notice only after it is published.</small>"
+            f"<label class='form-label mt-3' for='notice-category'>Notice category</label><select class='form-select' id='notice-category' name='category' required>{category_options}</select>"
+            "<small class='muted'>School policy requires a second approval for student records, student welfare, safeguarding, financial, disciplinary, legal, security, and other sensitive information.</small>"
             f"<label class='form-label mt-3' for='notice-subject'>Subject</label><input class='form-control' id='notice-subject' name='subject' maxlength='{MAX_SUBJECT_LENGTH}' required>"
             f"<label class='form-label mt-3' for='notice-body'>Notice</label><textarea class='form-control' id='notice-body' name='body' rows='5' maxlength='{MAX_BODY_LENGTH}' required></textarea>"
-            "<label class='notice-sensitive mt-3'><input type='checkbox' name='is_sensitive' value='1'>"
-            "<span>Sensitive notice — requires a second approval from a different user with sensitive notice approval permission.</span></label>"
             "<button class='btn btn-accent mt-3' type='submit'>Submit for approval</button></form></section>"
         )
     elif not visible_notices and not grants:
@@ -1359,7 +1489,7 @@ def official_notices():
 .official-notice-card{{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--card);overflow-wrap:anywhere}}
 .notice-card-heading{{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}}
 .notice-card-heading h3{{font-size:1.05rem;margin:8px 0 0}}
-.notice-card-heading time,.notice-sender,.notice-approval{{font-size:.8rem;color:var(--muted)}}
+.notice-card-heading time,.notice-sender,.notice-approval,.notice-category{{font-size:.8rem;color:var(--muted)}}
 .notice-body{{line-height:1.55;margin-top:10px}}
 .notice-actions{{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}}
 .notice-action-form{{display:flex;gap:7px;flex-wrap:wrap;align-items:center}}
@@ -1511,7 +1641,8 @@ def _render_thread(conversation, user):
     messages = SchoolMessage.query.filter_by(conversation_id=conversation.id).order_by(SchoolMessage.id.asc()).all()
     visible_messages = []
     for message in messages:
-        if message.approval_status != "approved" and user.id != conversation.created_by_id and user.role not in APPROVER_ROLES:
+        if (message.approval_status != "approved" and user.id != conversation.created_by_id
+                and not _has_notice_permission(user, "can_approve")):
             continue
         sender_role = message.sender_role or (message.sender.role if message.sender else "")
         sender_name = message.sender_name or (message.sender.full_name if message.sender else "Unavailable account")
@@ -1536,15 +1667,6 @@ def _render_thread(conversation, user):
             else:
                 report_form = "<small class='muted'>Reported for review</small>"
         review_controls = ""
-        if message.approval_status == "pending" and user.role in APPROVER_ROLES and user.id != message.sender_id:
-            review_controls = (
-                f"<form method='post' class='mt-3'><input type='hidden' name='csrf_token' value='{escape(_csrf_token())}'>"
-                "<input type='hidden' name='action' value='instruction_review'>"
-                f"<input type='hidden' name='message_id' value='{message.id}'>"
-                "<label class='form-label small'>Approval note</label><input class='form-control form-control-sm mb-2' name='review_note' maxlength='1000'>"
-                "<button class='btn btn-sm btn-success me-2' name='decision' value='approve'>Approve and publish</button>"
-                "<button class='btn btn-sm btn-outline-danger' name='decision' value='reject'>Reject</button></form>"
-            )
         visible_messages.append(
             f"<article class='message-bubble{' own' if own else ''}'><div class='message-meta'><strong>{escape(sender_name)}</strong>"
             f"<span>{escape(_role_label(sender_role))} · {escape(message.created_at)}<br>Authority: {escape(_role_authority(sender_role))}</span></div>"
@@ -1678,23 +1800,8 @@ def messages():
                     flash("Report sent to school leadership for review.", "success")
                 return redirect(url_for("messages", conversation=message.conversation_id))
         elif action == "instruction_review":
-            try:
-                message_id = int(request.form.get("message_id", "0"))
-            except (TypeError, ValueError):
-                abort(400)
-            message = db.session.get(SchoolMessage, message_id)
-            if not message:
-                abort(404)
-            decision = request.form.get("decision", "")
-            if decision not in {"approve", "reject"}:
-                abort(400)
-            review_note = request.form.get("review_note", "").strip()
-            if len(review_note) > MAX_REPORT_LENGTH or (decision == "reject" and not review_note):
-                flash("A rejection requires a decision note of up to 1,000 characters.", "danger")
-                return redirect(url_for("messages", view="review"))
-            _approve_instruction(current_user, message, decision, review_note)
-            flash("Decision recorded and included in the messaging audit trail.", "success")
-            return redirect(url_for("messages", view="review"))
+            # Legacy official messages are not approved through the ordinary hub.
+            abort(403)
         elif action == "report_review":
             try:
                 report_id = int(request.form.get("report_id", "0"))

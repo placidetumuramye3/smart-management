@@ -1,6 +1,9 @@
 from app.extensions import db
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.orm import validates
+from app.utils.constants import normalize_role
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -28,6 +31,10 @@ class User(UserMixin, db.Model):
     parent_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     is_active_account = db.Column(db.Boolean, default=True)
     children = db.relationship("User", backref=db.backref("parent", remote_side=[id]), lazy=True)
+
+    @validates("role")
+    def normalize_role_alias(self, _key, value):
+        return normalize_role(value)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

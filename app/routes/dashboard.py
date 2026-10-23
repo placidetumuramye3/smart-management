@@ -13,7 +13,7 @@ from app.utils.decorators import role_required
 from app.utils.helpers import get_setting, set_setting, attendance_for_student
 from app.utils.rendering import page
 
-from app.utils.helpers import linked_children
+from app.utils.helpers import guardian_can_access_student, linked_children
 from app.utils.decorators import permission_for
 
 
@@ -215,7 +215,7 @@ def secretary_analytics():
 
 def parent_child(student_id):
     student = db.session.get(User, student_id)
-    if not student or student.role != "student" or student.parent_id != current_user.id:
+    if not student or student.role != "student" or not guardian_can_access_student(current_user.id, student.id):
         abort(403)
     records = attendance_for_student(student.id)
     txs = FeeTransaction.query.filter_by(student_id=student.id).all()

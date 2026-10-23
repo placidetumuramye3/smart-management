@@ -35,6 +35,7 @@ class MessageConversation(db.Model):
     created_by_name = db.Column(db.String(160), nullable=False)
     created_by_role = db.Column(db.String(30), nullable=False)
     created_at = db.Column(db.String(19), nullable=False)
+    meeting_id = db.Column(db.Integer, db.ForeignKey("meeting.id", ondelete="SET NULL"), unique=True, index=True)
     participants = db.relationship(
         "MessageParticipant", back_populates="conversation", cascade="all, delete-orphan"
     )
@@ -134,6 +135,7 @@ class OfficialNotice(db.Model):
     subject = db.Column(db.String(160), nullable=False)
     body = db.Column(db.Text, nullable=False)
     recipient_ids_json = db.Column(db.Text, nullable=False)
+    category = db.Column(db.String(40), nullable=False, default="general", server_default=text("'general'"))
     is_sensitive = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
     status = db.Column(db.String(32), nullable=False, default="pending_approval", server_default=text("'pending_approval'"), index=True)
     created_at = db.Column(db.String(19), nullable=False)
@@ -153,6 +155,10 @@ class OfficialNotice(db.Model):
     revoked_by_name = db.Column(db.String(160))
     revoked_by_role = db.Column(db.String(30))
     revoked_at = db.Column(db.String(19))
+    rejected_by_id = db.Column(db.Integer)
+    rejected_by_name = db.Column(db.String(160))
+    rejected_by_role = db.Column(db.String(30))
+    rejected_at = db.Column(db.String(19))
     decision_note = db.Column(db.String(1000))
 
 

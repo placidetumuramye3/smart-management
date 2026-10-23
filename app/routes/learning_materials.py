@@ -11,8 +11,10 @@ from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import LearningMaterial, TimetableEntry, User
+from app.services.enrollment_service import current_enrollment
 from app.utils.decorators import permission_for
-from app.utils.helpers import now_string, teacher_assignments, teacher_assigned_classes, teacher_can_access_class
+from app.utils.helpers import (guardian_can_access_student, guardian_ids_for_student,
+                               linked_children, now_string, teacher_assignments)
 from app.utils.notifications import notify_users
 from app.utils.rendering import page
 
@@ -27,6 +29,7 @@ RESOURCE_TYPES = (
     "Educational Video", "Podcast / Audio", "Virtual Simulation", "3D Model",
     "Flashcards", "Drag-and-Drop Activity", "Self-Assessment Quiz",
 )
+OFFICE_ROLES = {"master_admin", "head_teacher", "secretary"}
 SCHEMATIC_TYPES = {"Mind Map", "Timeline", "Chart", "Infographic"}
 ACTIVITY_TYPES = {"Flashcards", "Drag-and-Drop Activity", "Self-Assessment Quiz"}
 VIDEO_MIME_TYPES = {"mp4": "video/mp4", "webm": "video/webm", "ogv": "video/ogg"}
@@ -154,6 +157,13 @@ def _assigned_subjects(teacher):
     return {(class_name, subject) for class_name, subject in teacher_assignments(teacher)}
 
 
+def _teacher_can_access_material(teacher, material):
+    assigned = {(class_name.casefold(), subject.casefold())
+                for class_name, subject in _assigned_subjects(teacher)}
+    key = (material.class_name.casefold(), material.subject.casefold())
+    return key in assigned and (material.is_published or material.teacher_id == teacher.id)
+
+
 def _store_material(upload):
     if not upload or not upload.filename:
         return None, None
@@ -171,9 +181,7 @@ def _store_material(upload):
 
 def _staff_material(material_id):
     material = db.session.get(LearningMaterial, material_id) or abort(404)
-    if current_user.role == "teacher" and (
-        material.teacher_id != current_user.id or not teacher_can_access_class(current_user, material.class_name)
-    ):
+    if current_user.role == "teacher" and not _teacher_can_access_material(current_user, material):
         abort(403)
     return material
 
@@ -249,9 +257,12 @@ def learning_materials():
             )
             db.session.add(material)
             if is_published:
-                student_ids = User.query.filter_by(role="student", class_name=class_name).with_entities(User.id).all()
+                students = User.query.filter_by(role="student", class_name=class_name).all()
+                recipient_ids = {student.id for student in students}
+                for student in students:
+                    recipient_ids.update(guardian_ids_for_student(student.id))
                 notify_users(
-                    {student_id for (student_id,) in student_ids},
+                    recipient_ids,
                     "Learning Materials",
                     f"New resource: {title}",
                     f"A learning resource for {subject} is now available to your class.",
@@ -261,17 +272,38 @@ def learning_materials():
             flash("Learning resource published." if is_published else "Learning resource saved as a draft.", "success")
             return redirect(url_for("learning_materials"))
 
-    if current_user.role == "master_admin":
+    if current_user.role in OFFICE_ROLES:
         materials = LearningMaterial.query.order_by(LearningMaterial.created_at.desc(), LearningMaterial.id.desc()).all()
         class_names = User.query.filter(User.role == "student", User.class_name.isnot(None)).with_entities(User.class_name).distinct().all()
         classes = sorted({name for (name,) in class_names if name})
     elif current_user.role == "teacher":
-        materials = LearningMaterial.query.filter_by(teacher_id=current_user.id).order_by(
-            LearningMaterial.created_at.desc(), LearningMaterial.id.desc()).all()
-        classes = sorted(teacher_assigned_classes(current_user), key=str.casefold)
+        assigned_subjects = {(class_name.casefold(), subject.casefold()) for class_name, subject in subjects}
+        candidates = LearningMaterial.query.filter(
+            db.or_(LearningMaterial.is_published.is_(True),
+                   LearningMaterial.teacher_id == current_user.id),
+        ).order_by(LearningMaterial.created_at.desc(), LearningMaterial.id.desc()).all()
+        materials = [material for material in candidates if (
+            material.class_name.casefold(), material.subject.casefold()
+        ) in assigned_subjects]
+        classes = sorted({class_name for class_name, _subject in subjects}, key=str.casefold)
+    elif current_user.role == "parent":
+        class_names = {
+            enrollment.class_name
+            for child in linked_children(current_user.id)
+            if (enrollment := current_enrollment(child.id)) is not None
+            and child.is_active_account
+        }
+        materials = LearningMaterial.query.filter(
+            LearningMaterial.class_name.in_(class_names) if class_names else False,
+            LearningMaterial.is_published.is_(True),
+        ).order_by(LearningMaterial.subject, LearningMaterial.created_at.desc()).all()
+        classes = []
     else:
         materials = LearningMaterial.query.filter_by(
-            class_name=current_user.class_name, is_published=True
+            class_name=(current_enrollment(current_user.id).class_name
+                        if current_user.role == "student" and current_enrollment(current_user.id)
+                        else None),
+            is_published=True,
         ).order_by(LearningMaterial.subject, LearningMaterial.created_at.desc()).all()
         classes = []
 
@@ -292,7 +324,7 @@ def learning_materials():
     )
     resource_type_options = "".join(f"<option value='{escape(resource_type)}'>{escape(resource_type)}</option>" for resource_type in RESOURCE_TYPES)
     create_form = ""
-    if current_user.role in {"master_admin", "head_teacher", "teacher"}:
+    if current_user.role in OFFICE_ROLES | {"teacher"}:
         create_form = f"""<section class='panel'><h2>Share Learning Resource</h2>
 <p class='muted'>Add reference notes, upload a file, or include both. Published resources become available to students in the selected class.</p>
 <form method='post' enctype='multipart/form-data' class='row g-3'><div class='col-md-4'><label>Title</label><input class='form-control' name='title' maxlength='180' required></div>{class_field}<div class='col-md-4'><label>Subject</label>{subject_field}</div>
@@ -397,10 +429,20 @@ document.addEventListener('drop',function(event){const zone=event.target.closest
 
 def learning_material_file(material_id):
     material = db.session.get(LearningMaterial, material_id) or abort(404)
-    if current_user.role in {"master_admin", "head_teacher", "teacher"}:
+    if current_user.role in OFFICE_ROLES | {"teacher"}:
         _staff_material(material_id)
     elif current_user.role == "student":
-        if not material.is_published or material.class_name != current_user.class_name:
+        enrollment = current_enrollment(current_user.id)
+        if not material.is_published or not enrollment or material.class_name != enrollment.class_name:
+            abort(403)
+    elif current_user.role == "parent":
+        children = linked_children(current_user.id)
+        if (not material.is_published or not any(
+            guardian_can_access_student(current_user.id, child.id)
+            and (enrollment := current_enrollment(child.id)) is not None
+            and enrollment.class_name == material.class_name
+            for child in children
+        )):
             abort(403)
     else:
         abort(403)

@@ -10,7 +10,9 @@ from app.extensions import db
 from app.models import (User, Attendance, PendingCard, FeeTransaction, FeeRequirement, Book, BookLoan,
                         DisciplineCase, SchoolMessage, UserNotification, Grade, TimetableEntry,
                         AssessmentSubmission, AssessmentAttempt, Setting,
-                        MessageParticipant, MessagePermission, MessageReport)
+                        MessageParticipant, MessagePermission, MessageReport,
+                        OfficialNoticePermission)
+from app.models import StudentGuardian
 from app.models import AcademicSubject
 from app.utils.constants import *
 from app.utils.decorators import role_required
@@ -18,6 +20,7 @@ from app.utils.helpers import get_setting, set_setting, attendance_for_student
 from app.utils.rendering import page
 from app.utils.decorators import permission_for
 from app.services.activity import log_student_activity
+from app.services.meeting_workflow import verify_guardian_link
 
 def admin():
     if request.method == "POST":
@@ -48,7 +51,7 @@ def admin():
                 for model_name in (
                     "Attendance", "Grade", "FeeTransaction", "FeeRequirement", "DisciplineCase",
                     "BookLoan", "AssessmentSubmission", "AssessmentAttempt", "UserNotification",
-                    "MessageParticipant", "MessagePermission",
+                    "MessageParticipant", "MessagePermission", "OfficialNoticePermission",
                 ):
                     model = globals().get(model_name)
                     if model is not None and hasattr(model, "student_id") and target.role == "student":
@@ -211,9 +214,13 @@ def admin():
                 s = db.session.get(User, int(student_id))
                 p = db.session.get(User, int(parent_id))
                 if s and s.role == "student" and p and p.role == "parent":
-                    s.parent_id = int(parent_id)
-                    db.session.commit()
-                    flash("Parent successfully linked to student.", "success")
+                    try:
+                        verify_guardian_link(current_user, s.id, p.id, "Parent / Guardian")
+                    except (PermissionError, ValueError) as error:
+                        db.session.rollback()
+                        flash(str(error), "danger")
+                    else:
+                        flash("Parent successfully linked to student.", "success")
                 else:
                     flash("Choose a valid parent and student account.", "danger")
         return redirect(url_for("admin"))

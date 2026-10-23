@@ -1,4 +1,5 @@
 ROLE_ALIASES = {
+    "admin": "master_admin",
     "administrator": "master_admin",
     "super_admin": "master_admin",
     "master_admin": "master_admin",
@@ -16,6 +17,7 @@ ROLE_ALIASES = {
 }
 
 ROLES = (
+    "admin",
     "master_admin",
     "head_teacher",
     "teacher",
@@ -43,10 +45,17 @@ def normalize_role(role):
 ROLE_ACCESS = {
     "dashboard": {"master_admin", "teacher", "accountant", "librarian", "discipline", "patron", "matron", "secretary", "parent", "student", "auditor"},
     "students": {"master_admin", "teacher", "librarian", "accountant", "discipline", "patron", "matron", "secretary"},
+    "student_enrollment": {"master_admin", "head_teacher", "secretary"},
+    "classrooms": {"master_admin", "head_teacher", "secretary", "teacher", "parent", "student"},
     "admissions": {"master_admin", "head_teacher", "secretary"},
     "documents": {"master_admin", "head_teacher", "secretary"},
     "parent_contacts": {"master_admin", "head_teacher", "secretary"},
-    "appointments": {"master_admin", "head_teacher", "secretary"},
+    "appointments": {"master_admin", "head_teacher", "secretary", "teacher", "discipline", "patron", "matron", "parent"},
+    "meetings": {"master_admin", "head_teacher", "secretary", "teacher", "discipline", "patron", "matron", "parent"},
+    "meeting_api": {"master_admin", "head_teacher", "secretary", "teacher", "discipline", "patron", "matron", "parent"},
+    "meeting_admin": {"master_admin", "head_teacher", "secretary"},
+    "meeting_settings": {"master_admin", "head_teacher"},
+    "meeting_audit": {"master_admin"},
     "announcements": {"master_admin", "head_teacher", "teacher", "accountant", "librarian", "discipline", "patron", "matron", "secretary", "parent", "student"},
     "correspondence": {"master_admin", "head_teacher", "secretary"},
     "letters_certificates": {"master_admin", "head_teacher", "secretary"},
@@ -70,8 +79,8 @@ ROLE_ACCESS = {
     "notifications": {"master_admin", "head_teacher", "teacher", "accountant", "librarian", "discipline", "patron", "matron", "secretary", "parent", "student", "auditor"},
     "assessments": {"master_admin", "teacher", "student", "parent"},
     "create_rubric": {"master_admin", "teacher"},
-    "learning_materials": {"master_admin", "teacher", "student"},
-    "learning_material_file": {"master_admin", "teacher", "student"},
+    "learning_materials": {"master_admin", "head_teacher", "secretary", "teacher", "student", "parent"},
+    "learning_material_file": {"master_admin", "head_teacher", "secretary", "teacher", "student", "parent"},
     "submit_assessment": {"student"},
     "start_assessment": {"student"},
     "grade_assessment": {"master_admin", "teacher"},
@@ -86,7 +95,7 @@ ROLE_ACCESS = {
 
 # Head Teachers supervise academic and student affairs across the school.
 for _endpoint in (
-    "dashboard", "students", "card_lookup", "report_lost_card", "admissions", "documents", "parent_contacts", "appointments", "announcements", "correspondence", "letters_certificates", "reports", "activity_history", "attendance", "attendance_times",
+    "dashboard", "students", "card_lookup", "report_lost_card", "admissions", "documents", "parent_contacts", "appointments", "meetings", "meeting_api", "meeting_admin", "meeting_settings", "announcements", "correspondence", "letters_certificates", "reports", "activity_history", "attendance", "attendance_times",
     "export_attendance", "grades", "report_card", "export_report_card", "timetable",
     "day_schedule", "discipline", "assessments", "create_rubric", "grade_assessment",
     "learning_materials", "learning_material_file", "assessment_file",

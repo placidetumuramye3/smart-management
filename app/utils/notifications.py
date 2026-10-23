@@ -1,6 +1,6 @@
 from app.models import User, UserNotification, ParentNotificationPreference
 from app.extensions import db
-from app.utils.helpers import now_string
+from app.utils.helpers import guardian_ids_for_student, now_string
 from app.utils.constants import ROLE_ACCESS
 from app.services.notification_service import send_parent_alert
 
@@ -24,9 +24,7 @@ def notify_users(user_ids, category, title, body, link="/notifications"):
 
 
 def notify_student_and_parent(student, category, title, body, link="/notifications"):
-    user_ids = [student.id]
-    if student.parent_id:
-        user_ids.append(student.parent_id)
+    user_ids = {student.id, *guardian_ids_for_student(student.id)}
     notify_users(user_ids, category, title, body, link)
 
 
@@ -45,10 +43,13 @@ def message_recipients(sender, recipient_id=None, recipient_role=None):
             recipients.add(target.id)
         else:
             target = None
-        if target and target.role == "student" and target.parent_id and sender.role != "student":
-            parent = db.session.get(User, target.parent_id)
-            if parent and parent.role == "parent" and parent.is_active_account:
-                recipients.add(parent.id)
+        if target and target.role == "student" and sender.role != "student":
+            recipients.update(
+                guardian.id for guardian in User.query.filter(
+                    User.id.in_(guardian_ids_for_student(target.id) or {-1}),
+                    User.is_active_account.is_(True), User.role == "parent",
+                ).all()
+            )
     if recipient_role == "all":
         recipients.update(user.id for user in User.query.filter(
             User.id != sender.id,

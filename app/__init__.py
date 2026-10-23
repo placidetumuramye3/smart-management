@@ -6,6 +6,9 @@ from app.extensions import db, login_manager
 from migrations.versions.v20261022_01_add_school_message_type import upgrade as upgrade_school_message_type
 from migrations.versions.v20261022_02_add_messaging_conversations import upgrade as upgrade_messaging_conversations
 from migrations.versions.v20261022_03_add_official_notice_workflow import upgrade as upgrade_official_notice_workflow
+from migrations.versions.v20261023_01_expand_parent_school_meetings import upgrade as upgrade_parent_school_meetings
+from migrations.versions.v20261023_02_add_meeting_workflows import upgrade as upgrade_meeting_workflows
+from migrations.versions.v20261023_03_add_student_enrollment_history import upgrade as upgrade_student_enrollment_history
 
 def create_app(config_class=Config):
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -21,7 +24,11 @@ def create_app(config_class=Config):
                             Correspondence, ActivityLog, Setting, SchoolMessage, UserNotification,
                             MessageConversation, MessageParticipant, MessageReport,
                             MessagePermission, MessageAuditEvent, OfficialNoticePermission,
-                            OfficialNotice, OfficialNoticeAuditEvent)
+                            OfficialNotice, OfficialNoticeAuditEvent, StudentGuardian,
+                            Meeting, MeetingParticipant, MeetingAttendance, MeetingAgendaItem,
+                            MeetingMinutes, MeetingMinutesRevision, MeetingActionItem,
+                            MeetingActionComment, MeetingAuditEvent, MeetingNotificationLog,
+                            StudentEnrollment)
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(User, int(user_id))
@@ -37,6 +44,9 @@ def create_app(config_class=Config):
             upgrade_school_message_type(connection)
             upgrade_messaging_conversations(connection)
             upgrade_official_notice_workflow(connection)
+            upgrade_parent_school_meetings(connection)
+            upgrade_meeting_workflows(connection)
+            upgrade_student_enrollment_history(connection)
         if inspect(db.engine).has_table("user"):
             db.metadata.create_all(
                 bind=db.engine,
@@ -47,7 +57,12 @@ def create_app(config_class=Config):
                         MessageConversation.__table__, MessageParticipant.__table__,
                         MessageReport.__table__, MessagePermission.__table__,
                         MessageAuditEvent.__table__, OfficialNoticePermission.__table__,
-                        OfficialNotice.__table__, OfficialNoticeAuditEvent.__table__],
+                        OfficialNotice.__table__, OfficialNoticeAuditEvent.__table__,
+                        StudentGuardian.__table__, Meeting.__table__, MeetingParticipant.__table__,
+                        MeetingAttendance.__table__, MeetingAgendaItem.__table__, MeetingMinutes.__table__,
+                        MeetingMinutesRevision.__table__, MeetingActionItem.__table__,
+                        MeetingActionComment.__table__, MeetingAuditEvent.__table__,
+                        MeetingNotificationLog.__table__, StudentEnrollment.__table__],
             )
             user_columns = {column["name"] for column in inspect(db.engine).get_columns("user")}
             for column_name, column_type in (
@@ -70,6 +85,8 @@ def create_app(config_class=Config):
                 "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship"
             )):
                 db.session.commit()
+            with db.engine.begin() as connection:
+                upgrade_student_enrollment_history(connection)
         if inspect(db.engine).has_table("pending_card"):
             pending_card_columns = {
                 column["name"] for column in inspect(db.engine).get_columns("pending_card")
@@ -150,4 +167,19 @@ def create_app(config_class=Config):
     def forbidden(_):
         from app.utils.rendering import page
         return page("Access Denied", "<section class='panel'><h1 class='accent'>Access Denied</h1><p>Your role does not have permission to access this module.</p><a class='btn btn-accent' href='/dashboard'>Return to Dashboard</a></section>", "error"), 403
+
+    @app.cli.command("send-meeting-reminders")
+    def send_meeting_reminders_command():
+        """Queue deduplicated in-app reminders for meetings within 24 hours."""
+        from click import echo
+        from app.services.meeting_service import meeting_reminders
+        echo(f"Queued {meeting_reminders()} meeting reminders.")
+
+    @app.cli.command("process-meeting-actions")
+    def process_meeting_actions_command():
+        """Mark overdue follow-up actions and notify school leadership."""
+        from click import echo
+        from app.services.meeting_service import escalate_overdue_actions
+        echo(f"Escalated {escalate_overdue_actions()} overdue meeting actions.")
+
     return app

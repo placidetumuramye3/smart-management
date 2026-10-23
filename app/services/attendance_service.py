@@ -4,7 +4,7 @@ from datetime import datetime
 from app.extensions import db
 from app.models import Attendance, User
 from app.utils.constants import DEFAULT_LATE_AFTER
-from app.utils.helpers import get_setting, teacher_assigned_classes
+from app.utils.helpers import get_setting, guardian_ids_for_student, teacher_assigned_classes
 from app.utils.notifications import notify_student_and_parent, notify_users
 
 
@@ -98,9 +98,7 @@ def reconcile_daily_absences(now=None, exclude_student_ids=None):
             note=deadline_note,
         ))
         absent_by_class[student.class_name or "Unassigned class"].append(student)
-        notify_ids = [student.id]
-        if student.parent_id:
-            notify_ids.append(student.parent_id)
+        notify_ids = {student.id, *guardian_ids_for_student(student.id)}
         notify_users(
             notify_ids,
             "Attendance",

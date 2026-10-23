@@ -4,6 +4,7 @@ from markupsafe import escape
 from app.extensions import db
 from app.models import User
 from app.utils.decorators import permission_for
+from app.utils.helpers import linked_children
 from app.utils.rendering import page
 
 
@@ -28,7 +29,7 @@ def parent_contacts():
     parents = User.query.filter_by(role="parent").order_by(User.full_name).all()
     rows = []
     for parent in parents:
-        children = User.query.filter_by(parent_id=parent.id, role="student").order_by(User.full_name).all()
+        children = linked_children(parent.id)
         child_names = "".join(f"<span class='parent-student-name'>{escape(child.full_name)}</span>" for child in children)
         if not child_names:
             child_names = "<span class='muted'>No students linked</span>"
