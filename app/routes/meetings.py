@@ -17,7 +17,8 @@ from app.models import (
     Setting, StudentGuardian, User,
 )
 from app.services.meeting_service import (
-    ACTION_STATUSES, APPROVER_ROLES, ATTENDANCE_STATUSES, INVITATION_STATUSES,
+    ACTION_STATUSES, APPROVER_ROLES, ATTENDANCE_STATUSES, CLASS_SUPPORT_ROLES,
+    INVITATION_STATUSES,
     MEETING_ROLES, MEETING_STATUSES, OFFICE_ROLES, can_manage_meeting, can_view_meeting,
     escalate_overdue_actions, meeting_reminders, staff_classes,
     guardian_ids_for_student, record_meeting_audit, verified_student_ids,
@@ -262,13 +263,19 @@ def meetings():
 <p class='muted'>Manage invitations, attendance, approved minutes, and follow-up actions in one secure workspace.</p></div>
 <div class='meeting-stats'><div><strong>{upcoming}</strong><span>Upcoming</span></div><div><strong>{awaiting}</strong><span>Pending approval / response</span></div><div><strong>{open_actions}</strong><span>Open actions</span></div></div></section>"""
     create_form = "" if current_user.role == "parent" else _meeting_form(current_user)
+    calendar_filter = ""
+    if view == "calendar":
+        calendar_filter = f"""<form method='get' class='row g-2 mt-2'>
+<input type='hidden' name='view' value='calendar'><input type='hidden' name='q' value='{escape(query)}'>
+<div class='col-auto'><label class='form-label'>Calendar month</label><input class='form-control' type='month' name='month' value='{escape(month_value)}'></div>
+<div class='col-auto d-flex align-items-end'><button class='btn btn-outline-success'>Go</button></div></form>"""
     filters = f"""<section class='panel'><form method='get' class='row g-2 align-items-end'>
 <div class='col-md-4'><label class='form-label'>Search meetings</label><input class='form-control' name='q' value='{escape(request.args.get('q', ''))}' placeholder='Title, class, or room'></div>
 <div class='col-md-3'><label class='form-label'>Status</label><select class='form-select' name='status'><option value=''>All statuses</option>{''.join(f"<option value='{escape(item)}{' selected' if status_filter == item else ''}'>{escape(item)}</option>" for item in sorted(MEETING_STATUSES))}</select></div>
 <div class='col-md-3'><label class='form-label'>Type</label><select class='form-select' name='type'><option value=''>All types</option>{''.join(f"<option value='{item}'{' selected' if type_filter == item else ''}>{escape(item.replace('_', ' ').title())}</option>" for item in ('general','class','parent_teacher','disciplinary','emergency','committee'))}</select></div>
 <div class='col-md-2'><button class='btn btn-outline-success w-100'>Filter</button></div></form>
 <div class='d-flex gap-2 mt-3'><a class='btn btn-sm btn-outline-secondary' href='{escape(url_for('meetings', view='list', q=query, status=status_filter, type=type_filter))}'>List view</a><a class='btn btn-sm btn-outline-secondary' href='{escape(url_for('meetings', view='calendar', month=month_value, q=query, status=status_filter, type=type_filter))}'>Calendar view</a></div>
-{'<form method="get" class="row g-2 mt-2"><input type="hidden" name="view" value="calendar"><input type="hidden" name="q" value="' + escape(query) + '"><div class="col-auto"><label class="form-label">Calendar month</label><input class="form-control" type="month" name="month" value="' + escape(month_value) + '"></div><div class="col-auto d-flex align-items-end"><button class="btn btn-outline-success">Go</button></div></form>' if view == 'calendar' else ''}
+{calendar_filter}
 </section>"""
     cards = _calendar_html(records, month_value) if view == "calendar" else "".join(_meeting_card(meeting, current_user) for meeting in records)
     if not cards:
