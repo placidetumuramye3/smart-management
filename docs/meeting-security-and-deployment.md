@@ -15,6 +15,15 @@
 
 In-app notification rows are the durable source. `MeetingNotificationLog` deduplicates each event per user and records `in_app_status` plus `external_status`. The current SMS/email integration is delegated to the existing parent notification service, which does not return provider delivery receipts; external status therefore remains `delegated` rather than claiming confirmed delivery. Configure SMTP and/or Twilio credentials only when those channels are approved for the school.
 
+## Video conferences
+
+- Meeting managers can start a Microsoft Teams conference from a scheduled meeting when the Microsoft Graph credentials below are configured. The integration creates or updates the calendar event as an online meeting and uses the returned Teams `joinUrl`.
+- Invited participants and the organizer receive an in-app notification linking to the protected meeting page. Participants with email addresses are included in the Microsoft calendar invitation. The meeting page exposes the Join button only to authorized meeting managers and eligible participants; a copied meeting-page link still requires sign-in and meeting authorization.
+- Set `MS_GRAPH_CREATE_TEAMS_MEETINGS=true` to create Teams links automatically for every scheduled meeting. Leave it false to let a manager create a conference for selected meetings from the meeting page.
+- Configure `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_CALENDAR_MAILBOX`, and the school's Microsoft time zone. The app registration needs Microsoft Graph `Calendars.ReadWrite` application permission with tenant admin consent, and the selected mailbox must support Teams meetings.
+- Set `PUBLIC_BASE_URL` to the school's HTTPS address so copied meeting-page links work for remote attendees.
+- Microsoft Graph does not allow an online meeting's provider to be changed after enabling it. A canceled meeting is removed from the configured calendar by the existing cancellation flow.
+
 ## Configuration and production setup
 
 1. Set a unique, high-entropy `SECRET_KEY` and production `DATABASE_URL` in the deployment environment. Do not use the development fallback key in production.

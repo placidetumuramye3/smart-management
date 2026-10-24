@@ -9,6 +9,8 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", 100 * 1024 * 1024))
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    RFID_DEVICE_TOKEN = os.environ.get("RFID_DEVICE_TOKEN", "")
+    RFID_DEVICE_CLASS = os.environ.get("RFID_DEVICE_CLASS", "").strip()
     ROOM_CAPACITY_LIMITS = os.environ.get("ROOM_CAPACITY_LIMITS", "{}")
     MS_GRAPH_TENANT_ID = os.environ.get("MS_GRAPH_TENANT_ID", "")
     MS_GRAPH_CLIENT_ID = os.environ.get("MS_GRAPH_CLIENT_ID", "")

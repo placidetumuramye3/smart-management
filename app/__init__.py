@@ -12,6 +12,7 @@ from migrations.versions.v20261023_04_add_room_reservations import upgrade as up
 from migrations.versions.v20261023_05_add_meeting_room_checkin import upgrade as upgrade_meeting_room_checkin
 from migrations.versions.v20261023_06_add_microsoft_meeting_sync import upgrade as upgrade_microsoft_meeting_sync
 from migrations.versions.v20261023_07_add_panel_discussion_format import upgrade as upgrade_panel_discussion_format
+from migrations.versions.v20261024_01_add_department_and_class_section import upgrade as upgrade_department_and_class_section
 
 def create_app(config_class=Config):
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -53,6 +54,7 @@ def create_app(config_class=Config):
             upgrade_meeting_room_checkin(connection)
             upgrade_microsoft_meeting_sync(connection)
             upgrade_panel_discussion_format(connection)
+            upgrade_department_and_class_section(connection)
         if inspect(db.engine).has_table("user"):
             db.metadata.create_all(
                 bind=db.engine,
@@ -186,5 +188,18 @@ def create_app(config_class=Config):
         from click import echo
         from app.services.meeting_service import escalate_overdue_actions
         echo(f"Escalated {escalate_overdue_actions()} overdue meeting actions.")
+
+    @app.cli.command("reconcile-daily-attendance")
+    def reconcile_daily_attendance_command():
+        """Save absences for students without an arrival scan after the late deadline."""
+        from click import echo
+        from app.services.attendance_service import reconcile_daily_absences
+        try:
+            absentees = reconcile_daily_absences()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        echo(f"Recorded {len(absentees)} new absence(s).")
 
     return app

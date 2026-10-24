@@ -1,4 +1,4 @@
-from flask import abort, redirect, request, url_for
+from flask import abort, flash, redirect, request, url_for
 from flask_login import current_user
 from markupsafe import escape
 
@@ -21,6 +21,19 @@ def notifications():
             if not notification:
                 abort(404)
             notification.is_read = True
+        elif action == "delete_notification":
+            notification = UserNotification.query.filter_by(
+                id=request.form.get("notification_id", type=int), user_id=current_user.id
+            ).first()
+            if not notification:
+                abort(404)
+            db.session.delete(notification)
+            flash("Notification deleted.", "success")
+        elif action == "delete_all":
+            deleted_count = UserNotification.query.filter_by(user_id=current_user.id).delete(
+                synchronize_session=False
+            )
+            flash(f"Deleted {deleted_count} notification(s).", "success")
         else:
             abort(400)
         db.session.commit()
@@ -36,18 +49,30 @@ def notifications():
         mark_read = (f"<form method='post' class='mt-2'><input type='hidden' name='action' value='mark_read'>"
                      f"<input type='hidden' name='notification_id' value='{item.id}'>"
                      "<button class='btn btn-sm btn-outline-success'>Mark as read</button></form>") if not item.is_read else ""
+        delete_notification = (
+            "<form method='post' class='mt-2'><input type='hidden' name='action' value='delete_notification'>"
+            f"<input type='hidden' name='notification_id' value='{item.id}'>"
+            f"<button class='btn btn-sm btn-outline-danger' aria-label=\"Delete notification: {escape(item.title)}\" "
+            f"onclick=\"return confirm('Delete this notification?')\">Delete</button></form>"
+        )
         rows.append(
             f"<article class='panel {'border-success' if not item.is_read else ''}'>"
             f"<div class='d-flex justify-content-between gap-3 flex-wrap'><div><span class='pill'>{escape(item.category)}</span> "
             f"<strong>{escape(item.title)}</strong></div><small class='muted'>{escape(item.created_at)} · {state}</small></div>"
-            f"<p class='mt-3 mb-2'>{escape(item.body)}</p><a href='{escape(safe_link)}'>Open related page</a>{mark_read}</article>"
+            f"<p class='mt-3 mb-2'>{escape(item.body)}</p><a href='{escape(safe_link)}'>Open related page</a>"
+            f"<div class='d-flex flex-wrap gap-2'>{mark_read}{delete_notification}</div></article>"
         )
     mark_all = ("<form method='post' class='mb-3'><input type='hidden' name='action' value='mark_all_read'>"
                 "<button class='btn btn-outline-success'>Mark all as read</button></form>") if unread_count else ""
+    delete_all = (
+        "<form method='post' class='mb-3' onsubmit=\"return confirm('Delete all your notifications? This cannot be undone.')\">"
+        "<input type='hidden' name='action' value='delete_all'>"
+        "<button class='btn btn-outline-danger'>Delete all notifications</button></form>"
+    ) if items else ""
     empty_state = "<section class='panel muted'>You have no notifications yet.</section>"
     body = ("<section class='panel'><h1><span class='accent'>Notifications</span></h1>"
             "<p class='muted'>Attendance alerts, fee requests, behavior reports, academic notices, and school announcements.</p>"
-            f"<p>{unread_count} unread</p>{mark_all}</section>"
+            f"<p>{unread_count} unread</p><div class='d-flex flex-wrap gap-2'>{mark_all}{delete_all}</div></section>"
             f"{''.join(rows) or empty_state}")
     return page("Notifications", body, "dashboard")
 

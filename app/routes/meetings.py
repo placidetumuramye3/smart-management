@@ -21,7 +21,7 @@ from app.services.meeting_service import (
     INVITATION_STATUSES,
     MEETING_ROLES, MEETING_STATUSES, OFFICE_ROLES, can_manage_meeting, can_view_meeting,
     escalate_overdue_actions, meeting_reminders, staff_classes,
-    guardian_ids_for_student, record_meeting_audit, verified_student_ids,
+    guardian_ids_for_student, notify_meeting_users, record_meeting_audit, verified_student_ids,
     visible_meetings,
 )
 from app.services.meeting_workflow import (
@@ -60,6 +60,29 @@ def _csrf_valid():
 
 def _csrf_field():
     return f"<input type='hidden' name='csrf_token' value='{escape(_csrf_token())}'>"
+
+
+def _sync_meeting_calendar(meeting, actor, force_video=False):
+    had_join_url = bool(meeting.microsoft_join_url)
+    synced = sync_meeting_to_microsoft(meeting, force_online=force_video)
+    if not had_join_url and meeting.microsoft_join_url and meeting.status in {"Scheduled", "Rescheduled"}:
+        event = record_meeting_audit(actor, meeting.id, "video_conference_created", {
+            "provider": "Microsoft Teams",
+        })
+        recipients = {meeting.organizer_id}
+        recipients.update(
+            row.user_id for row in meeting.participants
+            if row.invitation_status in {"invited", "accepted"}
+        )
+        recipients.discard(actor.id if actor else None)
+        notify_meeting_users(
+            meeting, recipients, f"video-ready:{event.id}",
+            "Meeting video conference ready",
+            "The meeting video conference is ready. Sign in to open the meeting details and join.",
+            link=f"/meetings/{meeting.id}",
+        )
+        db.session.commit()
+    return synced
 
 
 def _get_meeting(meeting_id):
@@ -547,7 +570,7 @@ def meetings():
             try:
                 meeting = create_meeting(current_user, request.form)
                 if meeting.status in {"Scheduled", "Rescheduled"}:
-                    sync_meeting_to_microsoft(meeting)
+                    _sync_meeting_calendar(meeting, current_user)
                 flash("Meeting saved and invitations sent." if meeting.status == "Scheduled" else
                       "Meeting saved. It will be visible to invitees after approval." if meeting.status == "Pending approval" else
                       "Meeting saved as a draft.", "success")
@@ -658,6 +681,18 @@ def meeting_detail(meeting_id):
                 respond_to_invitation(current_user, meeting, request.form.get("response", ""),
                                       request.form.get("comment", ""))
                 flash("Your meeting response was sent.", "success")
+            elif action == "create_video_conference":
+                if not can_manage_meeting(current_user, meeting):
+                    abort(403)
+                if meeting.status not in {"Scheduled", "Rescheduled"}:
+                    raise ValueError("Create a video conference only for a scheduled meeting.")
+                _sync_meeting_calendar(meeting, current_user, force_video=True)
+                if meeting.microsoft_join_url:
+                    flash("Teams video conference is ready. Invited participants were notified.", "success")
+                elif meeting.microsoft_sync_status == "not_configured":
+                    flash("Configure Microsoft 365 calendar credentials before creating a Teams video conference.", "danger")
+                else:
+                    flash("Teams could not create the video conference. Check the Microsoft 365 integration settings.", "danger")
             elif action == "participant_add":
                 add_meeting_participant(current_user, meeting, request.form.get("user_id", type=int))
                 flash("Meeting invitation sent.", "success")
@@ -712,7 +747,7 @@ def meeting_detail(meeting_id):
             else:
                 abort(400)
             if action in {"update", "approve_meeting", "reject_meeting"}:
-                sync_meeting_to_microsoft(meeting)
+                _sync_meeting_calendar(meeting, current_user)
         except PermissionError:
             db.session.rollback()
             abort(403)
@@ -755,10 +790,35 @@ def _render_meeting_detail(meeting, viewer):
     calendar_status = ""
     if meeting.microsoft_sync_status == "synced":
         calendar_status = "<p class='muted'>Synced to Microsoft 365 calendar.</p>"
-        if meeting.microsoft_join_url:
-            calendar_status += f"<p><a class='btn btn-sm btn-outline-success' href='{escape(meeting.microsoft_join_url)}' target='_blank' rel='noopener'>Join Teams meeting</a></p>"
     elif meeting.microsoft_sync_status == "error":
         calendar_status = "<p class='text-danger'>Microsoft calendar sync failed. Check the meeting sync settings.</p>"
+    conference_time = meeting.status in {"Scheduled", "Rescheduled"}
+    participant_can_join = bool(
+        participant and participant.invitation_status in {"invited", "accepted"}
+        or participant and participant.attendance and participant.attendance.status == "Present"
+    )
+    if meeting.microsoft_join_url and conference_time and (can_manage or participant_can_join):
+        public_base = current_app.config.get("PUBLIC_BASE_URL") or request.url_root.rstrip("/")
+        attendee_page_url = f"{public_base}{url_for('meeting_detail', meeting_id=meeting.id)}"
+        calendar_status += (
+            "<section class='panel meeting-section'><h2>Video conference</h2>"
+            "<p class='muted'>Invited attendees can join this meeting online. The secure meeting page link can be shared with attendees; they must sign in with an authorized account.</p>"
+            f"<div class='d-flex gap-2 flex-wrap'><a class='btn btn-success' href='{escape(meeting.microsoft_join_url)}' target='_blank' rel='noopener'>Join Teams meeting</a>"
+            f"<button class='btn btn-outline-secondary' type='button' data-copy-meeting-page='{escape(attendee_page_url)}'>Copy secure meeting link</button></div>"
+            "<p class='small muted mt-2' data-meeting-share-status aria-live='polite'></p></section>"
+            "<script>(()=>{document.addEventListener('click',async event=>{const button=event.target.closest('[data-copy-meeting-page]');if(!button)return;const status=button.parentElement.parentElement.querySelector('[data-meeting-share-status]');try{await navigator.clipboard.writeText(button.dataset.copyMeetingPage);status.textContent='Meeting page link copied. Share it with the invited attendees.';}catch(_){status.textContent='Copy was blocked by the browser. Copy this address from the browser bar after opening the meeting.';}});})();</script>"
+        )
+    elif can_manage and conference_time:
+        setup_note = (
+            "Microsoft 365 is not connected. Add the Graph tenant, app, secret, and calendar mailbox settings before creating a video room."
+            if meeting.microsoft_sync_status == "not_configured" else
+            "Start a Teams video conference and share access with the meeting invitees."
+        )
+        calendar_status += (
+            "<section class='panel meeting-section'><h2>Video conference</h2>"
+            f"<p class='muted'>{setup_note}</p><form method='post'><input type='hidden' name='action' value='create_video_conference'>{_csrf_field()}"
+            "<button class='btn btn-success' type='submit'>Create Teams video conference</button></form></section>"
+        )
     overview = f"""<section class='panel'><div class='d-flex justify-content-between align-items-start gap-3 flex-wrap'>
 <div><span class='pill'>{escape(meeting.status)} · {escape(meeting.approval_status.replace('_', ' ').title())}</span><h1 class='mt-2'>{escape(meeting.title)}</h1>
 <p class='muted'>{escape(meeting.meeting_type.replace('_', ' ').title())} · {escape(meeting.scheduled_date)} · {escape(_format_time(meeting.start_time))}–{escape(_format_time(meeting.end_time))} · {escape(meeting.location or 'Location to be confirmed')}{student_text}</p>{description}</div>{thread_link}</div></section>"""

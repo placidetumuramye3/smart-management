@@ -46,27 +46,36 @@ def admin():
                 flash("Master Admin accounts are protected from deletion here.", "danger")
             else:
                 if target.role == "student":
-                    log_student_activity(current_user, target, "Student removed", "Student account removed from the school system.")
-                # Remove related records that directly belong to this user before deleting the account.
-                for model_name in (
-                    "Attendance", "Grade", "FeeTransaction", "FeeRequirement", "DisciplineCase",
-                    "BookLoan", "AssessmentSubmission", "AssessmentAttempt", "UserNotification",
-                    "MessageParticipant", "MessagePermission", "OfficialNoticePermission",
-                ):
-                    model = globals().get(model_name)
-                    if model is not None and hasattr(model, "student_id") and target.role == "student":
-                        model.query.filter_by(student_id=target.id).delete(synchronize_session=False)
-                    elif model is not None and hasattr(model, "user_id"):
-                        model.query.filter_by(user_id=target.id).delete(synchronize_session=False)
-                MessageReport.query.filter_by(reporter_id=target.id).update(
-                    {MessageReport.reporter_id: None}, synchronize_session=False
-                )
-                # Bulk deletes bypass ORM relationship synchronization. Expire loaded
-                # collections so deleting the user cannot try to null their foreign keys.
-                db.session.expire(target)
-                db.session.delete(target)
-                db.session.commit()
-                flash("Account deleted successfully.", "success")
+                    target.is_active_account = False
+                    log_student_activity(
+                        current_user,
+                        target,
+                        "Student removed",
+                        "Student account archived; attendance and academic history retained.",
+                    )
+                    db.session.commit()
+                    flash("Student deleted from active records. Their existing school records were retained.", "success")
+                else:
+                    # Remove related records that directly belong to this user before deleting the account.
+                    for model_name in (
+                        "Attendance", "Grade", "FeeTransaction", "FeeRequirement", "DisciplineCase",
+                        "BookLoan", "AssessmentSubmission", "AssessmentAttempt", "UserNotification",
+                        "MessageParticipant", "MessagePermission", "OfficialNoticePermission",
+                    ):
+                        model = globals().get(model_name)
+                        if model is not None and hasattr(model, "student_id") and target.role == "student":
+                            model.query.filter_by(student_id=target.id).delete(synchronize_session=False)
+                        elif model is not None and hasattr(model, "user_id"):
+                            model.query.filter_by(user_id=target.id).delete(synchronize_session=False)
+                    MessageReport.query.filter_by(reporter_id=target.id).update(
+                        {MessageReport.reporter_id: None}, synchronize_session=False
+                    )
+                    # Bulk deletes bypass ORM relationship synchronization. Expire loaded
+                    # collections so deleting the user cannot try to null their foreign keys.
+                    db.session.expire(target)
+                    db.session.delete(target)
+                    db.session.commit()
+                    flash("Account deleted successfully.", "success")
         elif action == "edit_user":
             target = db.session.get(User, request.form.get("user_id", type=int))
             full_name = request.form.get("full_name", "").strip()
@@ -105,7 +114,11 @@ def admin():
                 target.full_name = full_name
                 target.username = username
                 target.role = role
-                target.class_name = class_name if role == "teacher" else None
+                target.class_name = (
+                    class_name if role == "teacher" else
+                    old_values["class"] if role == "student" and was_student else
+                    None
+                )
                 target.email = email
                 target.phone = phone
                 target.is_active_account = active
@@ -268,18 +281,49 @@ def admin():
             f"<dt class='col-sm-4'>Assigned lessons</dt><dd class='col-sm-8'>{escape(assignment_summary)}</dd>"
             if user.role == "teacher" and assignment_summary else ""
         )
+        student_record_details = (
+            f"<dt class='col-sm-4'>Department / trade</dt><dd class='col-sm-8'>{escape(user.department or user.trade or 'Not set')}</dd>"
+            f"<dt class='col-sm-4'>Level / class</dt><dd class='col-sm-8'>{escape(user.level or 'Not set')} / {escape(user.class_name or 'Not set')} / {escape(user.class_section or 'No section')}</dd>"
+            f"<dt class='col-sm-4'>Student record</dt><dd class='col-sm-8'><a href='{url_for('student_profile_by_id', student_id=user.id)}'>Open profile and actions</a></dd>"
+            if user.role == "student" else ""
+        )
         account_details = (
             f"<dl class='row mb-0'><dt class='col-sm-4'>Email</dt><dd class='col-sm-8'>{escape(user.email or 'Not set')}</dd>"
             f"<dt class='col-sm-4'>Phone</dt><dd class='col-sm-8'>{escape(user.phone or 'Not set')}</dd>"
             f"{assignment_detail_html}"
+            f"{student_record_details}"
             f"<dt class='col-sm-4'>Account status</dt><dd class='col-sm-8'>{'Active' if user.is_active_account else 'Disabled'}</dd></dl>"
         )
         view_dialog = f"<button class='btn btn-sm btn-outline-secondary' type='button' onclick=\"document.getElementById('view-user-{user.id}').showModal()\">View</button><dialog class='account-edit-dialog' id='view-user-{user.id}' aria-labelledby='view-user-title-{user.id}'><div class='account-dialog-header'><h2 id='view-user-title-{user.id}'>{escape(user.full_name)}</h2><button class='account-dialog-close' type='button' aria-label='Close' onclick=\"this.closest('dialog').close()\">&times;</button></div>{account_details}</dialog>"
-        edit_form = f"""<button class="btn btn-sm btn-outline-primary" type="button" onclick="document.getElementById('edit-user-{user.id}').showModal()">Edit</button><dialog class="account-edit-dialog" id="edit-user-{user.id}" aria-labelledby="edit-user-title-{user.id}"><div class="account-dialog-header"><h2 id="edit-user-title-{user.id}">Edit {escape(user.full_name)}</h2><button class="account-dialog-close" type="button" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button></div><form method="post" class="row g-2"><input type="hidden" name="action" value="edit_user"><input type="hidden" name="user_id" value="{user.id}"><div class="col-md-6"><label class="form-label">Full name</label><input class="form-control" name="full_name" value="{escape(user.full_name)}" required></div><div class="col-md-6"><label class="form-label">Username</label><input class="form-control" name="username" value="{escape(user.username)}" required></div><div class="col-md-6"><label class="form-label">Email</label><input class="form-control" type="email" name="email" value="{escape(user.email or '')}"></div><div class="col-md-6"><label class="form-label">Phone</label><input class="form-control" name="phone" value="{escape(user.phone or '')}"></div><div class="col-md-6"><label class="form-label">Role</label><select class="form-select" name="role">{role_options}</select></div><div class="col-md-6"><label class="form-label">Assigned class <span class="text-danger">(required for teachers)</span></label><select class="form-select" name="class_name"><option value="">Choose a class with enrolled students...</option>{''.join(f'<option value="{escape(name)}"{" selected" if user.class_name == name else ""}>{escape(name)}</option>' for name in class_names)}</select></div><div class="col-md-6"><label class="form-label">New password (optional)</label><input class="form-control" type="password" name="password" minlength="8" autocomplete="new-password"></div><div class="col-md-6 d-flex align-items-end"><label><input type="checkbox" name="is_active_account"{' checked' if user.is_active_account else ''}> Account enabled</label></div><div class="col-12 text-end mt-3"><button class="btn btn-accent" type="submit">Save changes</button></div></form></dialog>""" if can_manage_user else "<span class='muted'>Restricted</span>"
-        delete_action = (
-            "<span class='muted'>Protected</span>" if user.role == "master_admin" or not can_manage_user else
-            f"<form method='post' class='account-delete' onsubmit=\"return confirm('Delete this account? This action cannot be undone.')\"><input type='hidden' name='action' value='delete_user'><input type='hidden' name='user_id' value='{user.id}'><button class='btn btn-sm btn-danger' type='submit'>Delete</button></form>"
-        )
+        if can_manage_user and user.role == "student":
+            edit_form = (
+                f"<a class='btn btn-sm btn-outline-primary' href='{url_for('student_edit', student_id=user.id)}'>Edit</a>"
+            )
+        elif can_manage_user:
+            edit_form = f"""<button class="btn btn-sm btn-outline-primary" type="button" onclick="document.getElementById('edit-user-{user.id}').showModal()">Edit</button><dialog class="account-edit-dialog" id="edit-user-{user.id}" aria-labelledby="edit-user-title-{user.id}"><div class="account-dialog-header"><h2 id="edit-user-title-{user.id}">Edit {escape(user.full_name)}</h2><button class="account-dialog-close" type="button" aria-label="Close" onclick="this.closest('dialog').close()">&times;</button></div><form method="post" class="row g-2"><input type="hidden" name="action" value="edit_user"><input type="hidden" name="user_id" value="{user.id}"><div class="col-md-6"><label class="form-label">Full name</label><input class="form-control" name="full_name" value="{escape(user.full_name)}" required></div><div class="col-md-6"><label class="form-label">Username</label><input class="form-control" name="username" value="{escape(user.username)}" required></div><div class="col-md-6"><label class="form-label">Email</label><input class="form-control" type="email" name="email" value="{escape(user.email or '')}"></div><div class="col-md-6"><label class="form-label">Phone</label><input class="form-control" name="phone" value="{escape(user.phone or '')}"></div><div class="col-md-6"><label class="form-label">Role</label><select class="form-select" name="role">{role_options}</select></div><div class="col-md-6"><label class="form-label">Assigned class <span class="text-danger">(required for teachers)</span></label><select class="form-select" name="class_name"><option value="">Choose a class with enrolled students...</option>{''.join(f'<option value="{escape(name)}"{" selected" if user.class_name == name else ""}>{escape(name)}</option>' for name in class_names)}</select></div><div class="col-md-6"><label class="form-label">New password (optional)</label><input class="form-control" type="password" name="password" minlength="8" autocomplete="new-password"></div><div class="col-md-6 d-flex align-items-end"><label><input type="checkbox" name="is_active_account"{' checked' if user.is_active_account else ''}> Account enabled</label></div><div class="col-12 text-end mt-3"><button class="btn btn-accent" type="submit">Save changes</button></div></form></dialog>"""
+        else:
+            edit_form = "<span class='muted'>Restricted</span>"
+        if user.role == "master_admin" or not can_manage_user:
+            delete_action = "<span class='muted'>Protected</span>"
+        elif user.role == "student":
+            if user.is_active_account:
+                delete_action = (
+                    f"<form method='post' class='account-delete' onsubmit=\"return confirm('Delete this student from active records? Their school history will be retained and they can be restored.')\">"
+                    f"<input type='hidden' name='action' value='delete_user'><input type='hidden' name='user_id' value='{user.id}'>"
+                    "<button class='btn btn-sm btn-outline-danger' type='submit'>Delete</button></form>"
+                )
+            else:
+                delete_action = (
+                    f"<form method='post' action='{url_for('students')}' class='account-delete'>"
+                    f"<input type='hidden' name='action' value='restore_student'><input type='hidden' name='student_id' value='{user.id}'>"
+                    "<button class='btn btn-sm btn-outline-success' type='submit'>Restore</button></form>"
+                )
+        else:
+            delete_action = (
+                f"<form method='post' class='account-delete' onsubmit=\"return confirm('Delete this account? This action cannot be undone.')\">"
+                f"<input type='hidden' name='action' value='delete_user'><input type='hidden' name='user_id' value='{user.id}'>"
+                "<button class='btn btn-sm btn-danger' type='submit'>Delete</button></form>"
+            )
         user_row_html.append(
             f"<tr><td>{escape(user.full_name)}</td><td>{escape(user.username)}</td>"
             f"<td><span class='pill account-role-pill'>{escape(user.role.replace('_', ' ').title())}</span></td>"

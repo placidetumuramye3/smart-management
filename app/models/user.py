@@ -22,6 +22,8 @@ class User(UserMixin, db.Model):
     emergency_contact_name = db.Column(db.String(160))
     emergency_contact_phone = db.Column(db.String(40))
     emergency_contact_relationship = db.Column(db.String(80))
+    department = db.Column(db.String(100))
+    class_section = db.Column(db.String(50))
     level = db.Column(db.String(50))
     trade = db.Column(db.String(100))
     class_name = db.Column(db.String(100))

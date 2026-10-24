@@ -138,14 +138,14 @@ def reports():
         abort(400)
 
     if report_type == "students":
-        headers = ["Student", "SDMS Code", "Class", "Level", "Trade", "RFID Card"]
+        headers = ["Student", "SDMS Code", "Department", "Trade", "Level", "Class", "Class Section", "RFID Card"]
         query = User.query.filter_by(role="student")
         if class_name:
             query = query.filter_by(class_name=class_name)
-        rows = [[s.full_name, s.sdms_code or "", s.class_name or "", s.level or "", s.trade or "", s.rfid_uid or "Not assigned"] for s in query.order_by(User.full_name).all()]
+        rows = [[s.full_name, s.sdms_code or "", s.department or s.trade or "", s.trade or "", s.level or "", s.class_name or "", s.class_section or "", s.rfid_uid or "Not assigned"] for s in query.order_by(User.full_name).all()]
         title = "Student Report"
     elif report_type == "admissions":
-        headers = ["Applicant", "Guardian", "Phone", "Email", "Requested Class", "Trade", "Level", "Documents", "Verified", "Status", "Applied"]
+        headers = ["Applicant", "Guardian", "Phone", "Email", "Department", "Trade", "Level", "Requested Class", "Class Section", "Documents", "Verified", "Status", "Applied"]
         query = AdmissionApplicant.query
         if class_name:
             query = query.filter_by(desired_class=class_name)
@@ -154,10 +154,10 @@ def reports():
             applications = [item for item in applications if item.applied_at.strftime("%Y-%m-%d") >= date_from]
         if date_to:
             applications = [item for item in applications if item.applied_at.strftime("%Y-%m-%d") <= date_to]
-        rows = [[a.full_name, a.guardian_name or "", a.phone or "", a.email or "", a.desired_class, a.desired_trade, a.desired_level, a.documents_submitted or "", "Yes" if a.documents_verified else "No", a.status, a.applied_at.strftime("%Y-%m-%d")] for a in applications]
+        rows = [[a.full_name, a.guardian_name or "", a.phone or "", a.email or "", a.desired_department or a.desired_trade, a.desired_trade, a.desired_level, a.desired_class, a.desired_section or "", a.documents_submitted or "", "Yes" if a.documents_verified else "No", a.status, a.applied_at.strftime("%Y-%m-%d")] for a in applications]
         title = "Admissions Report"
     elif report_type == "attendance":
-        headers = ["Date", "Student", "Class", "Status", "Arrival", "Afternoon Scan", "Source"]
+        headers = ["Date", "Student", "Department", "Trade", "Level", "Class", "Class Section", "Status", "Arrival", "Afternoon Scan", "Source"]
         query = Attendance.query.join(User, Attendance.student_id == User.id)
         if class_name:
             query = query.filter(User.class_name == class_name)
@@ -166,7 +166,7 @@ def reports():
         if date_to:
             query = query.filter(Attendance.day <= date_to)
         records = query.order_by(Attendance.day.desc(), Attendance.id.desc()).all()
-        rows = [[a.day, a.student.full_name if a.student else "Unknown", a.student.class_name if a.student else "", a.status, a.arrival_time or "", a.afternoon_time or "", a.source or ""] for a in records]
+        rows = [[a.day, a.student.full_name if a.student else "Unknown", (a.student.department or a.student.trade or "") if a.student else "", a.student.trade or "" if a.student else "", a.student.level or "" if a.student else "", a.student.class_name or "" if a.student else "", a.student.class_section or "" if a.student else "", a.status, a.arrival_time or "", a.afternoon_time or "", a.source or ""] for a in records]
         title = "Attendance Report"
     else:
         headers = ["Student / Card", "Class", "UID", "Card Status", "First Seen"]

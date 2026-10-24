@@ -17,11 +17,16 @@ def admissions():
         action = request.form.get("action")
         if action == "create":
             full_name = request.form.get("full_name", "").strip()
+            department = request.form.get("department", "").strip()
             trade = request.form.get("trade", "").strip()
             level = request.form.get("level", "").strip()
             class_name = request.form.get("class_name", "").strip()
-            if not full_name or trade not in PROGRAM_LEVELS or level not in PROGRAM_LEVELS.get(trade, []) or not class_name:
-                flash("Enter the applicant name and choose a valid trade, level, and class.", "danger")
+            class_section = request.form.get("class_section", "").strip()
+            if (not full_name or not department or trade not in PROGRAM_LEVELS
+                    or level not in PROGRAM_LEVELS.get(trade, []) or not class_name):
+                flash("Enter the applicant name and department, then choose a valid trade, level, and class.", "danger")
+            elif len(department) > 100 or len(class_section) > 50:
+                flash("Department must be 100 characters or fewer and class section 50 characters or fewer.", "danger")
             elif class_name in CLASS_TRADE_LEVEL and CLASS_TRADE_LEVEL[class_name] != (trade, level):
                 flash("The selected class does not match the chosen trade and level.", "danger")
             else:
@@ -30,9 +35,11 @@ def admissions():
                     guardian_name=request.form.get("guardian_name", "").strip(),
                     phone=request.form.get("phone", "").strip(),
                     email=request.form.get("email", "").strip(),
+                    desired_department=department,
                     desired_trade=trade,
                     desired_level=level,
                     desired_class=class_name,
+                    desired_section=class_section or None,
                     documents_submitted=request.form.get("documents_submitted", "").strip(),
                 )
                 db.session.add(applicant)
@@ -66,8 +73,11 @@ def admissions():
             if not applicant:
                 abort(404)
             existing_class_students = User.query.filter_by(role="student", class_name=applicant.desired_class).all()
+            target_department = applicant.desired_department or applicant.desired_trade
             class_conflict = any(
-                student.trade != applicant.desired_trade or student.level != applicant.desired_level
+                (student.department or student.trade) != target_department
+                or student.trade != applicant.desired_trade
+                or student.level != applicant.desired_level
                 for student in existing_class_students
             )
             if applicant.status != "Admitted" or not applicant.documents_verified:
@@ -84,6 +94,8 @@ def admissions():
                     full_name=applicant.full_name,
                     role="student",
                     class_name=applicant.desired_class,
+                    class_section=applicant.desired_section,
+                    department=target_department,
                     level=applicant.desired_level,
                     trade=applicant.desired_trade,
                     sdms_code=generate_sdms_code(),
@@ -111,7 +123,8 @@ def admissions():
         )
         rows.append(
             f"<tr><td>{escape(applicant.full_name)}</td><td>{escape(applicant.guardian_name or '-')}<br>{escape(applicant.phone or applicant.email or '-')}</td>"
-            f"<td>{escape(applicant.desired_trade)} / {escape(applicant.desired_level)} / {escape(applicant.desired_class)}</td>"
+            f"<td>{escape(applicant.desired_department or applicant.desired_trade)} / {escape(applicant.desired_trade)} / "
+            f"{escape(applicant.desired_level)} / {escape(applicant.desired_class)} / {escape(applicant.desired_section or 'No section')}</td>"
             f"<td>{docs}</td><td>{escape(applicant.applied_at.strftime('%Y-%m-%d'))}</td>"
             f"<td><form method='post' class='d-flex flex-column gap-2'><input type='hidden' name='action' value='review'><input type='hidden' name='applicant_id' value='{applicant.id}'>"
             f"<select class='form-select form-select-sm' name='status'>{''.join(f'<option value="{value}"{" selected" if applicant.status == value else ""}>{value}</option>' for value in ('Submitted', 'Under Review', 'Admitted', 'Rejected'))}</select>"
@@ -126,7 +139,13 @@ def admissions():
         f"<option value='{escape(name)}' data-trade='{escape(trade)}' data-level='{escape(level)}'>{escape(name)}</option>"
         for name, (trade, level) in CLASS_TRADE_LEVEL.items()
     )
-    body = f"""<section class='panel'><h1>Admissions</h1><p class='muted'>Register applicants, record submitted documents, verify eligibility, and manage admission decisions.</p><form method='post' class='row g-3'><input type='hidden' name='action' value='create'><div class='col-md-6'><label class='form-label'>Applicant name</label><input class='form-control' name='full_name' required></div><div class='col-md-6'><label class='form-label'>Parent / guardian</label><input class='form-control' name='guardian_name'></div><div class='col-md-6'><label class='form-label'>Phone</label><input class='form-control' name='phone'></div><div class='col-md-6'><label class='form-label'>Email</label><input class='form-control' type='email' name='email'></div><div class='col-md-4'><label class='form-label'>Trade</label><select id='admission-trade' class='form-select' name='trade' required><option value=''>Choose trade</option>{trade_options}</select></div><div class='col-md-4'><label class='form-label'>Level</label><select id='admission-level' class='form-select' name='level' required><option value=''>Choose level</option>{level_options}</select></div><div class='col-md-4'><label class='form-label'>Class</label><select id='admission-class' class='form-select' name='class_name' required><option value=''>Choose class</option>{class_options}</select></div><div class='col-12'><label class='form-label'>Documents received</label><textarea class='form-control' name='documents_submitted' rows='2' placeholder='List submitted documents'></textarea></div><div class='col-12'><button class='btn btn-accent'>Register Applicant</button></div></form></section><section class='panel'><h2>Applicant Records</h2><div class='table-responsive'><table class='table align-middle'><thead><tr><th>Applicant</th><th>Guardian / Contact</th><th>Requested placement</th><th>Documents</th><th>Applied</th><th>Review</th><th>Student account</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7" class="muted">No applicants registered.</td></tr>'}</tbody></table></div></section><script>(function(){{const trade=document.getElementById('admission-trade'),level=document.getElementById('admission-level'),className=document.getElementById('admission-class');function filter(){{for(const option of level.options)if(option.dataset.trade)option.hidden=option.dataset.trade!==trade.value;for(const option of className.options)if(option.dataset.trade)option.hidden=option.dataset.trade!==trade.value||option.dataset.level!==level.value;if(level.selectedOptions[0]?.hidden)level.value='';if(className.selectedOptions[0]?.hidden)className.value='';}}trade.addEventListener('change',filter);level.addEventListener('change',filter);filter();}})();</script>"""
+    known_departments = sorted(
+        {student.department or student.trade for student in User.query.filter_by(role="student").all()
+         if student.department or student.trade},
+        key=str.casefold,
+    )
+    department_options = "".join(f'<option value="{escape(value)}">' for value in known_departments)
+    body = f"""<section class='panel'><h1>Admissions</h1><p class='muted'>Register applicants, record submitted documents, verify eligibility, and manage admission decisions.</p><form method='post' class='row g-3'><input type='hidden' name='action' value='create'><div class='col-md-6'><label class='form-label'>Applicant name</label><input class='form-control' name='full_name' required></div><div class='col-md-6'><label class='form-label'>Department</label><input class='form-control' name='department' maxlength='100' list='admission-departments' required><datalist id='admission-departments'>{department_options}</datalist></div><div class='col-md-6'><label class='form-label'>Parent / guardian</label><input class='form-control' name='guardian_name'></div><div class='col-md-6'><label class='form-label'>Phone</label><input class='form-control' name='phone'></div><div class='col-md-6'><label class='form-label'>Email</label><input class='form-control' type='email' name='email'></div><div class='col-md-3'><label class='form-label'>Trade</label><select id='admission-trade' class='form-select' name='trade' required><option value=''>Choose trade</option>{trade_options}</select></div><div class='col-md-3'><label class='form-label'>Level</label><select id='admission-level' class='form-select' name='level' required><option value=''>Choose level</option>{level_options}</select></div><div class='col-md-3'><label class='form-label'>Class</label><select id='admission-class' class='form-select' name='class_name' required><option value=''>Choose class</option>{class_options}</select></div><div class='col-md-3'><label class='form-label'>Class section</label><input class='form-control' name='class_section' maxlength='50' placeholder='A, B, Morning'></div><div class='col-12'><label class='form-label'>Documents received</label><textarea class='form-control' name='documents_submitted' rows='2' placeholder='List submitted documents'></textarea></div><div class='col-12'><button class='btn btn-accent'>Register Applicant</button></div></form></section><section class='panel'><h2>Applicant Records</h2><div class='table-responsive'><table class='table align-middle'><thead><tr><th>Applicant</th><th>Guardian / Contact</th><th>Requested placement</th><th>Documents</th><th>Applied</th><th>Review</th><th>Student account</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7" class="muted">No applicants registered.</td></tr>'}</tbody></table></div></section><script>(function(){{const trade=document.getElementById('admission-trade'),level=document.getElementById('admission-level'),className=document.getElementById('admission-class');function filter(){{for(const option of level.options)if(option.dataset.trade)option.hidden=option.dataset.trade!==trade.value;for(const option of className.options)if(option.dataset.trade)option.hidden=option.dataset.trade!==trade.value||option.dataset.level!==level.value;if(level.selectedOptions[0]?.hidden)level.value='';if(className.selectedOptions[0]?.hidden)className.value='';}}trade.addEventListener('change',filter);level.addEventListener('change',filter);filter();}})();</script>"""
     body += """<style>
 .admission-picker{position:relative;width:100%;min-width:0}
 .admission-picker-source{display:none!important}

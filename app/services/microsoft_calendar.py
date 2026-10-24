@@ -13,7 +13,7 @@ from app.extensions import db
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 
 
-def sync_meeting_to_microsoft(meeting):
+def sync_meeting_to_microsoft(meeting, force_online=False):
     config = current_app.config
     tenant_id = config.get("MS_GRAPH_TENANT_ID")
     client_id = config.get("MS_GRAPH_CLIENT_ID")
@@ -91,7 +91,7 @@ def sync_meeting_to_microsoft(meeting):
         }
         if not meeting.microsoft_event_id:
             event["transactionId"] = f"school-meeting-{meeting.id}"
-        if config.get("MS_GRAPH_CREATE_TEAMS_MEETINGS"):
+        if force_online or config.get("MS_GRAPH_CREATE_TEAMS_MEETINGS"):
             event["isOnlineMeeting"] = True
             event["onlineMeetingProvider"] = "teamsForBusiness"
         payload = json.dumps(event).encode("utf-8")

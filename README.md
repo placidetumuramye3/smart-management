@@ -12,6 +12,10 @@ pip install -r requirements.txt
 python run.py
 ```
 
+For Windows local development, run `run-local.cmd` from Command Prompt or `.\run-local.cmd` from PowerShell to use the existing `instance/lyceedemuhura.db` SQLite file for that process only. It leaves `.env` and any configured PostgreSQL database unchanged. To use PostgreSQL, update `DATABASE_URL` in `.env` with the current URL from your database provider; URL-encode reserved characters in the password. A PostgreSQL connection timeout usually means the server is unavailable from this network, the hostname/port is wrong, or the provider's network allowlist blocks this machine. Do not share the connection string.
+
+To record no-scan absences without waiting for an RFID scan or the Attendance page to be opened, schedule `reconcile-daily-attendance` to run once per minute. For the local SQLite database, schedule `reconcile-attendance-local.cmd`; for PostgreSQL, run `py -m flask --app run.py reconcile-daily-attendance` from the project directory.
+
 Default bootstrap admin (development only): `admin` / `admin1234`. Change it immediately.
 
 ## Architecture
