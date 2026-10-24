@@ -322,6 +322,31 @@ def students():
     if request.method == "POST" and current_user.role not in {"master_admin", "secretary"}:
         abort(403)
     can_register = current_user.role in {"master_admin", "secretary"}
+    if request.method == "POST" and request.form.get("action") == "archive_all_students":
+        if request.form.get("confirmation", "").strip() != "ARCHIVE ALL STUDENTS":
+            flash("Type ARCHIVE ALL STUDENTS exactly to confirm the bulk action.", "danger")
+            return redirect(url_for("students", status="active"))
+        active_students = User.query.filter_by(role="student").filter(
+            db.or_(User.is_active_account.is_(True), User.is_active_account.is_(None))
+        ).all()
+        for student in active_students:
+            student.is_active_account = False
+            log_student_activity(
+                current_user,
+                student,
+                "Student removed",
+                "Student account archived by the bulk archive action; attendance and academic history retained.",
+            )
+        db.session.commit()
+        if active_students:
+            flash(
+                f"{len(active_students)} student account(s) were deleted from active records. "
+                "Their school history was retained, and each account can be restored individually.",
+                "success",
+            )
+        else:
+            flash("There are no active student accounts to delete.", "info")
+        return redirect(url_for("students", status="archived"))
     if request.method == "POST" and request.form.get("action") in {"archive_student", "restore_student"}:
         student = db.session.get(User, request.form.get("student_id", type=int))
         if not student or student.role != "student":
@@ -503,6 +528,9 @@ def students():
     elif current_user.role in {"discipline", "patron", "matron"}:
         student_query = student_query.filter_by(class_name=current_user.class_name)
     all_students = student_query.order_by(User.full_name).all()
+    active_student_count = User.query.filter_by(role="student").filter(
+        db.or_(User.is_active_account.is_(True), User.is_active_account.is_(None))
+    ).count()
     pending = PendingCard.query.filter_by(state="Pending").order_by(PendingCard.id.desc()).all()
     parents = User.query.filter_by(role="parent").all()
 
@@ -633,8 +661,19 @@ def students():
         f"<a class='btn btn-sm {'btn-accent' if requested_status == 'all' else 'btn-outline-secondary'}' href='{url_for('students', status='all')}'>All</a></nav>"
         if can_register else ""
     )
+    bulk_archive_form = (
+        f"<form method='post' action='{url_for('students')}' class='panel d-flex flex-wrap align-items-end gap-3' "
+        f"onsubmit=\"return confirm('This will archive all {active_student_count} active student accounts. Their school history will be retained, and they can be restored individually. Continue?')\">"
+        "<input type='hidden' name='action' value='archive_all_students'>"
+        f"<div class='flex-grow-1'><label class='form-label' for='archive-all-confirmation'>Bulk delete all {active_student_count} active students</label>"
+        "<p class='muted mb-2'>This removes students from active records while preserving attendance, grades, and other history. Type <code>ARCHIVE ALL STUDENTS</code> to confirm.</p>"
+        "<input id='archive-all-confirmation' class='form-control' name='confirmation' autocomplete='off' pattern='ARCHIVE ALL STUDENTS' required></div>"
+        "<button class='btn btn-outline-danger' type='submit'>Delete all active students</button></form>"
+        if can_register and active_student_count > 0 and requested_status in {"active", "all"} else ""
+    )
     body = f"""<style>.student-registration-header{{margin-bottom:20px}}.student-registration-header h1{{font-size:clamp(1.5rem,2.4vw,2rem)}}.student-registration-header p{{max-width:850px;font-size:1rem;line-height:1.5;margin-bottom:0}}.pending-section-title{{font-size:1.25rem!important}}.pending-cards-table{{width:100%;margin-bottom:0}}.student-registration-form{{row-gap:1.25rem!important}}.student-registration-form .form-label{{display:block;font-weight:650;margin-bottom:.45rem}}.student-registration-form .form-control,.student-registration-form .form-select{{min-height:48px}}.student-registration-form h2{{margin-bottom:.25rem}}.student-review-dialog{{width:min(620px,calc(100vw - 28px));max-height:85vh;overflow:auto;border:1px solid var(--border);border-radius:16px;padding:22px;background:var(--card);color:var(--text)}}.student-review-dialog::backdrop{{background:rgba(5,10,15,.68)}}.student-review-dialog h2{{font-size:1.3rem;margin-bottom:8px}}.student-review-details{{display:grid;grid-template-columns:minmax(120px,.4fr) minmax(0,1fr);gap:8px 16px;margin:18px 0}}.student-review-details dt{{font-weight:700;color:var(--muted)}}.student-review-details dd{{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}}.student-review-actions{{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}}@media(max-width:480px){{.student-review-dialog{{padding:16px}}.student-review-details{{grid-template-columns:1fr;gap:2px 0}}.student-review-details dd{{margin-bottom:8px}}}}</style>{status_filters}{pending_section}
 {registration_form}
+{bulk_archive_form}
 <section class="panel registered-students-panel" id="registered-students"><h2>Registered Students</h2><p class="muted">View the full profile, edit student details, or delete the account from active records while retaining attendance and academic history.</p><div class="table-responsive registered-students-table"><table class="table"><thead><tr><th>Name / Status</th><th>Admission Number</th><th>Class</th><th>Department</th><th>Trade</th><th>Level</th><th>Class Section</th><th>Update Department / Section</th><th>RFID UID</th><th>Parent</th><th>Actions</th></tr></thead><tbody>{student_rows or '<tr><td colspan="11" class="muted">No students match this status.</td></tr>'}</tbody></table></div><div class="registered-student-cards">{student_cards or '<p class="muted mb-0">No students match this status.</p>'}</div></section>"""
     body = """<style>
 .student-registration-picker{position:relative;min-width:0;width:100%}
