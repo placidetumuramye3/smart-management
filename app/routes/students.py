@@ -12,7 +12,7 @@ from app.extensions import db
 from app.models import User, Attendance, PendingCard, FeeTransaction, Book, BookLoan, DisciplineCase, SchoolMessage, Grade, TimetableEntry, DayScheduleEntry, Setting, StudentGuardian
 from app.utils.constants import *
 from app.utils.decorators import role_required
-from app.utils.helpers import get_setting, set_setting, attendance_for_student, generate_sdms_code, teacher_assigned_classes, teacher_can_access_class, now_string, guardian_can_access_student
+from app.utils.helpers import get_setting, set_setting, attendance_for_student, generate_sdms_code, teacher_assigned_classes, teacher_can_access_class, now_string, guardian_can_access_student, get_school_logo_static_url
 from app.utils.rendering import page
 from app.utils.decorators import permission_for
 from markupsafe import escape
@@ -90,7 +90,7 @@ def student_profile(student_id=None):
 <section class="panel"><h2>Published Behavior Reports</h2><div class="table-responsive"><table class="table"><tr><th>Date</th><th>Type</th><th>Details</th><th>Action Taken</th><th>Remarks</th></tr>{discipline_rows or '<tr><td colspan="5" class="muted">No published behavior reports are available.</td></tr>'}</table></div></section>
 <section class="panel"><h2>Attendance Summary</h2><div class="grid">{attendance_summary}</div></section>
 <section class="panel"><h2>Attendance History & RFID Scan Times</h2><p class="muted">Daily status, school arrival time, and afternoon attendance for this student.</p><div class="table-responsive"><table class="table"><tr><th>Date</th><th>Attendance</th><th>Arrival Time</th><th>Afternoon Attendance</th><th>Source</th></tr>{scan_rows or '<tr><td colspan="5" class="muted">No attendance history is available for this student.</td></tr>'}</table></div></section>
-<section class="panel"><h2>School Information</h2><p><strong>{get_setting('school_name', 'Lycée de Muhura')}</strong></p>{f'<p class="muted">{motto}</p>' if motto else ''}<img src="/school-logo" alt="School logo" onerror="this.style.display='none'" style="max-width:110px;max-height:90px;object-fit:contain"></section>"""
+<section class="panel"><h2>School Information</h2><p><strong>{get_setting('school_name', 'Lycée de Muhura')}</strong></p>{f'<p class="muted">{motto}</p>' if motto else ''}<img src="{get_school_logo_static_url()}" alt="School logo" onerror="this.style.display='none'" style="max-width:110px;max-height:90px;object-fit:contain"></section>"""
     if current_user.role in {"master_admin", "secretary"}:
         actions = (
             f"<section class='panel d-flex gap-2 flex-wrap'><a class='btn btn-outline-primary' href='{url_for('student_edit', student_id=student.id)}'>Edit student</a>"

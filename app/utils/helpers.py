@@ -1,5 +1,8 @@
 import datetime
+import os
 import secrets
+from flask import current_app, url_for
+from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.models import Setting, User, Attendance, AcademicSubject, TimetableEntry, StudentGuardian
 
@@ -17,6 +20,15 @@ def set_setting(key, value):
     else:
         db.session.add(Setting(key=key, value=value))
     db.session.commit()
+
+def get_school_logo_static_url():
+    """Return a working static URL for the configured or bundled school logo."""
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    configured_filename = get_setting("school_logo", "") or ""
+    filename = secure_filename(os.path.basename(configured_filename.strip()))
+    if not filename or not os.path.isfile(os.path.join(upload_folder, filename)):
+        filename = "school_logo.jpg"
+    return url_for("static", filename=f"images/{filename}")
 
 def linked_children(user_id):
     student_ids = verified_student_ids(user_id)
