@@ -17,11 +17,13 @@ from markupsafe import escape
 from app.utils.notifications import notify_school_admins
 from app.services.activity import log_student_activity
 from app.services.attendance_service import (
+    DEFAULT_PRESENT_GRACE_MINUTES,
     LATE_GRACE_SECONDS,
     class_absent_student_names,
     class_attendance_summary,
     clock_minutes,
     classify_morning_status,
+    get_present_grace_minutes,
     notify_class_attendance,
     reconcile_daily_absences,
     school_attendance_summary,
@@ -89,7 +91,11 @@ def rfid_class_status():
 
 def rfid_login():
     if request.method == "GET":
-        return page("RFID Scanner Endpoint", """<section class="panel"><h1>RFID <span class="accent">Scanner API Endpoint</span></h1><p>Connect the RFID reader controller to <code>POST /student/rfid-login</code> with JSON such as <code>{"uid": "A1B2C3D4"}</code> or <code>{"rfid_card_uid": "A1B2C3D4"}</code>.</p><p class="muted">The server clock and saved Scan Times settings determine each result; the ESP32 sends the card UID. Scans through one minute after the allowed time ends are Present. Scans more than one minute and up to 15 minutes after are Late. After the 15-minute grace, the endpoint returns Access Denied and keeps the student Absent; the configured afternoon scan window remains available. The ESP32's protected status poll, staff opening Attendance, or the scheduled attendance reconciliation command queues in-app alerts for newly absent students, guardians, and authorized staff. Late scans queue alerts immediately. Parent email and SMS alerts also require configured providers.</p><p>Configure the same RFID_DEVICE_TOKEN in the server environment and ESP32 sketch to authenticate requests. Leave RFID_DEVICE_CLASS blank to let each scanned card use its registered student's class and show aggregate school attendance totals on the idle LCD. Set RFID_DEVICE_CLASS only when the reader should be restricted to one class. Unassigned cards are added to the pending queue for registration.</p></section>""", "attendance")
+        try:
+            grace_minutes = get_present_grace_minutes()
+        except ValueError:
+            grace_minutes = DEFAULT_PRESENT_GRACE_MINUTES
+        return page("RFID Scanner Endpoint", f"""<section class="panel"><h1>RFID <span class="accent">Scanner API Endpoint</span></h1><p>Connect the RFID reader controller to <code>POST /student/rfid-login</code> with JSON such as <code>{{"uid": "A1B2C3D4"}}</code> or <code>{{"rfid_card_uid": "A1B2C3D4"}}</code>.</p><p class="muted">The server clock and saved Scan Times settings determine each result; the ESP32 sends the card UID. Scans through the configured {grace_minutes}-minute Present grace after the allowed time ends are Present. Later scans through 15 minutes after the deadline are Late. After 15 minutes, the endpoint returns Access Denied and keeps the student Absent; the configured afternoon scan window remains available. The ESP32's protected status poll, staff opening Attendance, or the scheduled attendance reconciliation command queues in-app alerts for newly absent students, guardians, and authorized staff. Late scans queue alerts immediately. Parent email and SMS alerts also require configured providers.</p><p>Configure the same RFID_DEVICE_TOKEN in the server environment and ESP32 sketch to authenticate requests. Leave RFID_DEVICE_CLASS blank to let each scanned card use its registered student's class and show aggregate school attendance totals on the idle LCD. Set RFID_DEVICE_CLASS only when the reader should be restricted to one class. Unassigned cards are added to the pending queue for registration.</p></section>""", "attendance")
 
     token_error = _rfid_device_token_error()
     if token_error:
@@ -126,11 +132,12 @@ def rfid_login():
         late_after_minute = clock_minutes(late_after)
         afternoon_start_minute = clock_minutes(afternoon_start)
         afternoon_end_minute = clock_minutes(afternoon_end)
+        configured_present_grace = get_present_grace_minutes()
     except ValueError:
         current_app.logger.exception("Invalid saved RFID attendance time setting")
         return jsonify(
             status="error",
-            message="Attendance scan times are invalid. Ask the school administrator to save the time settings again.",
+            message="Attendance times or Present grace are invalid. Ask the school administrator to save the time settings again.",
         ), 503
     current_seconds = now.hour * 3600 + now.minute * 60 + now.second
     allowed_end_seconds = late_after_minute * 60
@@ -212,6 +219,7 @@ def rfid_login():
             timestamp=stamp,
             allowed_time_ends=late_after,
             late_window_ends=late_window_end_text,
+            present_grace_minutes=configured_present_grace,
             meeting_checkins=meeting_checkins,
             message=(
                 f"Access denied: the RFID arrival window ended at {late_window_end_text}. "
@@ -220,7 +228,7 @@ def rfid_login():
         ), 403
 
     if morning_start_minute * 60 <= current_seconds < afternoon_start_minute * 60:
-        status = classify_morning_status(scan_clock, late_after)
+        status = classify_morning_status(scan_clock, late_after, configured_present_grace)
         recorded_arrival = False
         should_notify = True
         notification_time = stamp
@@ -250,7 +258,9 @@ def rfid_login():
             # original RFID arrival time when the student scans again.
             saved_clock = row.arrival_time.rsplit(" ", 1)[-1][:8]
             try:
-                corrected_status = classify_morning_status(saved_clock, late_after)
+                corrected_status = classify_morning_status(
+                    saved_clock, late_after, configured_present_grace
+                )
             except ValueError:
                 corrected_status = row.status
             if row.status != corrected_status:
@@ -266,7 +276,9 @@ def rfid_login():
                        class_name=student.class_name or "Unassigned",
                        class_summary=student_class_attendance_summary(student, today),
                        server_time=clock, morning_start=morning_start,
-                       late_after=late_after, afternoon_start=afternoon_start,
+                       late_after=late_after,
+                       present_grace_minutes=configured_present_grace,
+                       afternoon_start=afternoon_start,
                        afternoon_end=afternoon_end,
                        meeting_checkins=meeting_checkins, timestamp=stamp,
                        message=f"{student.full_name}: {row.status} recorded at {stamp}.")
@@ -295,7 +307,9 @@ def rfid_login():
                        class_name=student.class_name or "Unassigned",
                        class_summary=student_class_attendance_summary(student, today),
                        server_time=clock, morning_start=morning_start,
-                       late_after=late_after, afternoon_start=afternoon_start,
+                       late_after=late_after,
+                       present_grace_minutes=configured_present_grace,
+                       afternoon_start=afternoon_start,
                        afternoon_end=afternoon_end,
                        meeting_checkins=meeting_checkins, timestamp=stamp,
                        message=f"{student.full_name}: Afternoon attendance recorded at {stamp}.")
@@ -313,7 +327,8 @@ def rfid_login():
                    class_name=student.class_name or "Unassigned",
                    class_summary=class_summary,
                    server_time=clock, morning_start=morning_start,
-                   late_after=late_after, afternoon_start=afternoon_start,
+                   late_after=late_after, present_grace_minutes=configured_present_grace,
+                   afternoon_start=afternoon_start,
                    afternoon_end=afternoon_end,
                    message=f"Scan at server time {clock} is outside the allowed windows. Morning: {morning_start}-{afternoon_start}; afternoon: {afternoon_start}-{afternoon_end}."), 403
 

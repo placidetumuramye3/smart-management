@@ -8,7 +8,8 @@ from app.utils.helpers import get_setting, guardian_ids_for_student, teacher_ass
 from app.utils.notifications import notify_student_and_parent, notify_users
 
 
-PRESENT_GRACE_SECONDS = 60
+DEFAULT_PRESENT_GRACE_MINUTES = 5
+MAX_PRESENT_GRACE_MINUTES = 14
 LATE_GRACE_SECONDS = 15 * 60
 
 
@@ -44,10 +45,30 @@ def normalize_clock(value):
     return f"{minutes // 60:02d}:{minutes % 60:02d}"
 
 
-def classify_morning_status(clock, late_after):
+def get_present_grace_minutes():
+    """Read the configured Present grace, using a safe default for older installs."""
+    value = get_setting("present_grace_minutes", DEFAULT_PRESENT_GRACE_MINUTES)
+    try:
+        minutes = int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ValueError("Present grace must be a whole number of minutes.")
+    if not 0 <= minutes <= MAX_PRESENT_GRACE_MINUTES:
+        raise ValueError(
+            f"Present grace must be between 0 and {MAX_PRESENT_GRACE_MINUTES} minutes."
+        )
+    return minutes
+
+
+def classify_morning_status(clock, late_after, grace_minutes=None):
     """Classify a scan against the configured allowed-time end and grace periods."""
+    if grace_minutes is None:
+        grace_minutes = DEFAULT_PRESENT_GRACE_MINUTES
+    if not 0 <= int(grace_minutes) <= MAX_PRESENT_GRACE_MINUTES:
+        raise ValueError(
+            f"Present grace must be between 0 and {MAX_PRESENT_GRACE_MINUTES} minutes."
+        )
     seconds_after_end = clock_seconds(clock) - clock_seconds(late_after)
-    if seconds_after_end <= PRESENT_GRACE_SECONDS:
+    if seconds_after_end <= int(grace_minutes) * 60:
         return "Present"
     if seconds_after_end <= LATE_GRACE_SECONDS:
         return "Late"

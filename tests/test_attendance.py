@@ -26,7 +26,10 @@ def test_attendance_classification():
     assert classify_morning_status("06:45", "08:00") == "Present"
     assert classify_morning_status("07:30", "08:00") == "Present"
     assert classify_morning_status("08:01", "08:00") == "Present"
-    assert classify_morning_status("08:02", "08:00") == "Late"
+    assert classify_morning_status("08:05:00", "08:00") == "Present"
+    assert classify_morning_status("08:05:01", "08:00") == "Late"
+    assert classify_morning_status("08:15:00", "08:00") == "Late"
+    assert classify_morning_status("08:15:01", "08:00") == "Absent"
     assert classify_morning_status("7:30 AM", "08:00 AM") == "Present"
 
 
@@ -36,7 +39,10 @@ def test_clock_settings_are_compared_as_time_values():
     assert clock_minutes("8:00 AM") == 480
 
 
-@pytest.mark.parametrize(("scan_clock", "expected"), [("07:30", "Present"), ("08:02", "Late")])
+@pytest.mark.parametrize(
+    ("scan_clock", "expected"),
+    [("07:30", "Present"), ("08:05", "Present"), ("08:06", "Late")],
+)
 def test_rfid_scan_uses_configured_cutoff(app, monkeypatch, scan_clock, expected):
     hour, minute = (int(part) for part in scan_clock.split(":"))
 

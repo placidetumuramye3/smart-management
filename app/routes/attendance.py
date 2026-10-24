@@ -14,8 +14,11 @@ from app.utils.helpers import get_setting, set_setting, attendance_for_student, 
 from app.utils.rendering import page
 from app.utils.decorators import permission_for
 from app.services.attendance_service import (
+    DEFAULT_PRESENT_GRACE_MINUTES,
     LATE_GRACE_SECONDS,
+    MAX_PRESENT_GRACE_MINUTES,
     clock_minutes,
+    get_present_grace_minutes,
     normalize_clock,
     reconcile_daily_absences,
 )
@@ -340,7 +343,7 @@ def attendance():
             f"<td>{status_cell}</td><td>{escape(_scan_datetime(a.day, a.arrival_time))}</td>"
             f"<td>{escape(_scan_datetime(a.day, a.afternoon_time))}</td><td>{escape(a.source or '-')}</td></tr>"
         )
-    body = f"""<section class="panel"><h1>Attendance <span class="accent">Register</span></h1><p class="muted">Attendance is recorded automatically by RFID scans using the server clock. Scans through one minute after the allowed time ends are Present; scans more than one minute and up to 15 minutes after are Late. Students with no scan by the end of the 15-minute grace period are marked Absent when the ESP32 polls, staff open this page, or the scheduled attendance reconciliation command runs. Scans after the grace period are denied; the separately configured afternoon scan window remains available. Attendance statuses and times are read-only here. Class attendance updates are sent to assigned teachers, matron, patron, discipline staff, and school leadership.</p><div class="grid mb-4"><div class="stat"><div class="stat-value">{len(rfid_records)}</div><div class="stat-label">RFID Scans Today</div></div><div class="stat"><div class="stat-value">{len(late_records)}</div><div class="stat-label">Late Students Today</div></div><div class="stat"><div class="stat-value">{len(absent_records)}</div><div class="stat-label">Absences Today</div></div></div></section>{teacher_roster_section}<section class="panel"><h2>Attendance Totals by Department / Trade and Class</h2><p class="muted">Showing {escape(level_group_labels[selected_level_group])} for {today}. Totals follow the registered student structure: Trade / Department → Level → Class. Students without a recorded status are counted as Not marked.</p>{attendance_filter}<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Department / Trade</th><th>Level</th><th>Class</th><th>Enrolled</th><th>Present</th><th>Late</th><th>Absent</th><th>Permission</th><th>Not marked</th></tr></thead><tbody>{''.join(attendance_total_rows) or '<tr><td colspan="9" class="muted">No students are registered in this attendance scope.</td></tr>'}</tbody></table></div></section><section class="panel"><h2>Today's Attendance Details</h2><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Student</th><th>Class</th><th>Status</th><th>Morning Scan Date/Time</th><th>Afternoon Scan Date/Time</th><th>Source</th></tr></thead><tbody>{today_rows or '<tr><td colspan="6" class="muted">No attendance records recorded today.</td></tr>'}</tbody></table></div><h2 class="mt-4">Attendance History</h2><div class="table-responsive"><table class="table align-middle attendance-history"><thead><tr><th>Date</th><th>Student Name</th><th>Class</th><th>Status</th><th>Morning Scan Date/Time</th><th>Afternoon Scan Date/Time</th><th>Source</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7" class="muted">No attendance records found.</td></tr>'}</tbody></table></div><a class="btn btn-outline-success mt-3" href="/attendance/export" style="border-color:var(--accent);color:var(--text)">Download Attendance Excel</a></section>"""
+    body = f"""<section class="panel"><h1>Attendance <span class="accent">Register</span></h1><p class="muted">Attendance is recorded automatically by RFID scans using the server clock. Scans within the configured Present grace after the allowed time ends are Present; later scans through 15 minutes after are Late. Students with no scan by the end of the 15-minute grace period are marked Absent when the ESP32 polls, staff open this page, or the scheduled attendance reconciliation command runs. Scans after the grace period are denied; the separately configured afternoon scan window remains available. Attendance statuses and times are read-only here. Class attendance updates are sent to assigned teachers, matron, patron, discipline staff, and school leadership.</p><div class="grid mb-4"><div class="stat"><div class="stat-value">{len(rfid_records)}</div><div class="stat-label">RFID Scans Today</div></div><div class="stat"><div class="stat-value">{len(late_records)}</div><div class="stat-label">Late Students Today</div></div><div class="stat"><div class="stat-value">{len(absent_records)}</div><div class="stat-label">Absences Today</div></div></div></section>{teacher_roster_section}<section class="panel"><h2>Attendance Totals by Department / Trade and Class</h2><p class="muted">Showing {escape(level_group_labels[selected_level_group])} for {today}. Totals follow the registered student structure: Trade / Department → Level → Class. Students without a recorded status are counted as Not marked.</p>{attendance_filter}<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Department / Trade</th><th>Level</th><th>Class</th><th>Enrolled</th><th>Present</th><th>Late</th><th>Absent</th><th>Permission</th><th>Not marked</th></tr></thead><tbody>{''.join(attendance_total_rows) or '<tr><td colspan="9" class="muted">No students are registered in this attendance scope.</td></tr>'}</tbody></table></div></section><section class="panel"><h2>Today's Attendance Details</h2><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Student</th><th>Class</th><th>Status</th><th>Morning Scan Date/Time</th><th>Afternoon Scan Date/Time</th><th>Source</th></tr></thead><tbody>{today_rows or '<tr><td colspan="6" class="muted">No attendance records recorded today.</td></tr>'}</tbody></table></div><h2 class="mt-4">Attendance History</h2><div class="table-responsive"><table class="table align-middle attendance-history"><thead><tr><th>Date</th><th>Student Name</th><th>Class</th><th>Status</th><th>Morning Scan Date/Time</th><th>Afternoon Scan Date/Time</th><th>Source</th></tr></thead><tbody>{''.join(rows) or '<tr><td colspan="7" class="muted">No attendance records found.</td></tr>'}</tbody></table></div><a class="btn btn-outline-success mt-3" href="/attendance/export" style="border-color:var(--accent);color:var(--text)">Download Attendance Excel</a></section>"""
     body = body.replace(
         "Trade / Department â†’ Level â†’ Class.",
         "Department â†’ Trade â†’ Level â†’ Class â†’ Section.",
@@ -385,6 +388,11 @@ def attendance_times():
         vals = {k: request.form.get(k, "").strip() for k in keys}
         try:
             vals = {key: normalize_clock(value) for key, value in vals.items()}
+            grace_minutes = int(request.form.get(
+                "present_grace_minutes", str(DEFAULT_PRESENT_GRACE_MINUTES)
+            ).strip())
+            if not 0 <= grace_minutes <= MAX_PRESENT_GRACE_MINUTES:
+                raise ValueError()
             if not (
                 clock_minutes(vals["morning_start"]) <= clock_minutes(vals["late_after"])
                 and clock_minutes(vals["late_after"]) + (LATE_GRACE_SECONDS // 60)
@@ -394,23 +402,29 @@ def attendance_times():
                 raise ValueError()
             for k, v in vals.items():
                 set_setting(k, v)
+            set_setting("present_grace_minutes", str(grace_minutes))
             flash(
-                f"Attendance windows saved: Present through one minute after {vals['late_after']}; "
-                f"Late through 15 minutes after; then Absent if no scan.",
+                f"Attendance windows saved: Present through {grace_minutes} minute(s) after "
+                f"{vals['late_after']}; Late through 15 minutes after; then Absent if no scan.",
                 "success",
             )
             return redirect(url_for("attendance_times"))
         except ValueError:
-            flash("Use valid 24-hour times ensuring: Morning start ≤ allowed-time end, the 15-minute late period ends before Afternoon start, and Afternoon start ≤ Afternoon end.", "danger")
+            flash(f"Use valid clock times and a whole-number Present grace from 0 to {MAX_PRESENT_GRACE_MINUTES} minutes. Morning Start must be at or before Allowed Time Ends; the 15-minute attendance period must end before Afternoon Start; Afternoon Start must be at or before Afternoon End.", "danger")
     values = {}
     for key, default in keys.items():
         try:
             values[key] = normalize_clock(get_setting(key, default))
         except ValueError:
             values[key] = normalize_clock(default)
-    body = f"""<section class="panel"><h1>Attendance <span class="accent">Time Settings</span></h1><p class="muted">The server's local clock is used for every RFID scan. Scans through one minute after the allowed time ends are Present. Scans more than one minute and up to 15 minutes after are Late. If there is no scan by the end of those 15 minutes, the student is marked Absent. Scans after the 15-minute grace are denied, except during the separately configured Afternoon Start to Afternoon End scan window. Set Afternoon Start later than the end of the grace period.</p><form method="post" class="row g-3">
+    try:
+        grace_minutes = get_present_grace_minutes()
+    except ValueError:
+        grace_minutes = DEFAULT_PRESENT_GRACE_MINUTES
+    body = f"""<section class="panel"><h1>Attendance <span class="accent">Time Settings</span></h1><p class="muted">The server's local clock is used for every RFID scan. Scans through the configured Present grace after the allowed time ends are Present. Later scans through 15 minutes after the deadline are Late. If there is no valid scan by the end of those 15 minutes, the student is marked Absent. Scans after 15 minutes are denied, except during the separately configured Afternoon Start to Afternoon End scan window. Choose a Present grace from 0 to {MAX_PRESENT_GRACE_MINUTES} minutes. Set Afternoon Start later than the 15-minute attendance period.</p><form method="post" class="row g-3">
 <div class="col-md-6"><label>Morning Start</label><input class="form-control" type="time" name="morning_start" value="{values['morning_start']}" required></div>
 <div class="col-md-6"><label>Allowed Time Ends</label><input class="form-control" type="time" name="late_after" value="{values['late_after']}" required></div>
+<div class="col-md-6"><label>Present Grace After Deadline (minutes)</label><input class="form-control" type="number" name="present_grace_minutes" min="0" max="{MAX_PRESENT_GRACE_MINUTES}" step="1" value="{grace_minutes}" required><small class="form-text">Students remain Present until this many minutes after Allowed Time Ends.</small></div>
 <div class="col-md-6"><label>Afternoon Start</label><input class="form-control" type="time" name="afternoon_start" value="{values['afternoon_start']}" required></div>
 <div class="col-md-6"><label>Afternoon End</label><input class="form-control" type="time" name="afternoon_end" value="{values['afternoon_end']}" required></div>
 <div class="col-12"><button class="btn btn-accent">Save Time Windows</button></div></form></section>"""
