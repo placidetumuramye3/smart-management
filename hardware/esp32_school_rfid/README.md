@@ -49,17 +49,17 @@ LCD backpacks commonly use address `0x27`; some use `0x3F`. Change `LCD_ADDRESS`
 
 ## Configure and upload
 
-1. Install the Espressif ESP32 board package in Arduino IDE.
+1. Install the Espressif ESP32 board package **3.3.12 or newer** in Arduino IDE. This sketch uses its trusted built-in CA bundle for HTTPS verification.
 2. Install these libraries from Library Manager: **MFRC522**, **LiquidCrystal I2C**, and **ArduinoJson**.
-3. Open `esp32_school_rfid.ino` and set `WIFI_SSID`, `WIFI_PASSWORD`, and `RFID_DEVICE_TOKEN`. Keep `RFID_CLASS_NAME` empty to accept cards from every class. This is the only active `.ino` sketch in the folder; `esp32_school_rfid123.ino.disabled` is an older backup and must not be renamed to `.ino` while compiling this sketch.
-4. Find the computer's LAN IPv4 address with `ipconfig`. Replace `192.168.1.50` in both `RFID_ENDPOINT` and `RFID_STATUS_ENDPOINT` with that address. Keep port `5000` and the existing endpoint paths.
-5. Set a long random `RFID_DEVICE_TOKEN` in `.env` and use the same token in the firmware. Leave `RFID_DEVICE_CLASS` blank for multi-class operation; each card scan is matched to its registered student and returns that student's own class. The idle status poll then returns school-wide totals without exposing a list of absent names. To restrict a reader to one class and show that class's absent names, set the same exact class in both `RFID_DEVICE_CLASS` and `RFID_CLASS_NAME`. The token authenticates both card scans and status polls. Do not commit or share the real token. Use the plain HTTP endpoints only on a trusted school LAN; production use should be HTTPS.
-6. Keep the ESP32 and Flask server on the same trusted Wi-Fi/LAN. Start the app with `python run.py`; the current launcher listens on port 5000. Allow private-network access through the computer firewall if prompted.
+3. Copy `rfid_config.example.h` to `rfid_config.h`, then set `WIFI_SSID`, `WIFI_PASSWORD`, and `RFID_DEVICE_TOKEN` in the new local file. `rfid_config.h` is ignored by Git. Keep `RFID_CLASS_NAME` empty to allow cards from every registered class. This is the only active `.ino` sketch in the folder; `esp32_school_rfid123.ino.disabled` is an older backup and must not be renamed to `.ino` while compiling this sketch.
+4. The sketch is already configured for the hosted HTTPS app at `https://smart-management-school.onrender.com`. Do not change it to `localhost`, `127.0.0.1`, or a private `192.168...` address.
+5. In the Render service's Environment settings, set a new, long random `RFID_DEVICE_TOKEN` and leave `RFID_DEVICE_CLASS` blank for multi-class operation. Put the same token in local `rfid_config.h`, then redeploy the service. The status endpoint requires a non-empty server token; the scan endpoint may still accept scans when that setting is missing, which can make registration/scanning appear to work while the LCD shows a status sync error. Keep the class blank on both sides unless this reader should be restricted to one exact class.
+6. Connect the ESP32 to Wi-Fi with internet access. The device synchronizes its clock with NTP before using HTTPS so it can validate the server certificate.
 7. Select the matching ESP32 board and port, upload, and open Serial Monitor at `115200` baud.
 
-The firmware sends the uppercase, zero-padded UID as JSON to Flask, prints the request and complete HTTP response in Serial Monitor, and displays the attendance status returned by Flask on the LCD. It ignores a repeat of the same UID for 10 seconds after the response display finishes.
+The firmware sends the uppercase, zero-padded UID as JSON to Flask over HTTPS, prints the request and complete HTTP response in Serial Monitor, and displays the attendance status returned by Flask on the LCD. It ignores a repeat of the same UID for 10 seconds after the response display finishes. TLS certificate checks remain enabled; do not replace them with `setInsecure()`.
 
-Do not use `localhost` or `127.0.0.1` in `RFID_ENDPOINT`: those addresses would point to the ESP32 itself. This sketch uses plain HTTP for a trusted local network. Do not expose port 5000 to the public internet; production deployment should use HTTPS and device authentication.
+The code reports the status endpoint's HTTP code on the LCD and prints the full response in Serial Monitor. `401` means the token in Render and `rfid_config.h` differs; `404` means the deployed app does not have the RFID status route; `503` means `RFID_DEVICE_TOKEN` is missing in Render; `502` or `504` usually means the hosted service is unavailable or still starting. A negative HTTPS/network error points to Wi-Fi, DNS, NTP, or TLS and its detailed reason appears in Serial Monitor.
 
 ## LED and LCD feedback
 

@@ -3,5 +3,6 @@ venv/
 __pycache__/
 *.py[cod]
 .env
+hardware/esp32_school_rfid/rfid_config.h
 instance/*.db
 .pytest_cache/

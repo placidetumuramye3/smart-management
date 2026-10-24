@@ -45,8 +45,8 @@ def upgrade(connection):
             SELECT student.id, student.parent_id,
                    COALESCE(NULLIF(student.guardian_relationship, ''), 'Parent / Guardian'),
                    'verified', NULL, :timestamp
-            FROM user AS student
-            JOIN user AS guardian ON guardian.id = student.parent_id
+            FROM "user" AS student
+            JOIN "user" AS guardian ON guardian.id = student.parent_id
             WHERE student.role = 'student'
               AND guardian.role = 'parent'
               AND student.parent_id IS NOT NULL

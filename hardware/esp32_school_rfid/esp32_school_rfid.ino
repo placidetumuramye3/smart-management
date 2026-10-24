@@ -2,19 +2,28 @@
 #include <HTTPClient.h>
 #include <LiquidCrystal_I2C.h>
 #include <MFRC522.h>
+#include <NetworkClientSecure.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <Wire.h>
+#include <esp_arduino_version.h>
+#include <time.h>
 
-// Update these values for your Wi-Fi and the computer running the Flask app.
-const char *WIFI_SSID = "IAP4";
-const char *WIFI_PASSWORD = "123@Muhura";
-const char *RFID_ENDPOINT = "http://192.168.1.50:5000/student/rfid-login";
-const char *RFID_STATUS_ENDPOINT = "http://192.168.1.50:5000/student/rfid-status";
-const char *RFID_DEVICE_TOKEN="rfid-esp32-7c9f3a2d8b614e05a6c1f928d47b3a50";
-// Keep this empty to scan students from any class. Each scan uses the class
-// linked to that card in the school system.
-const char *RFID_CLASS_NAME = "";
+#include "rfid_config.h"
+
+// HTTPS certificate-bundle support is required; never send the device token
+// over plain HTTP or disable certificate checks.
+#if !defined(ESP_ARDUINO_VERSION_MAJOR) || \
+    ESP_ARDUINO_VERSION_MAJOR < 3 || \
+    (ESP_ARDUINO_VERSION_MAJOR == 3 && ESP_ARDUINO_VERSION_MINOR < 3) || \
+    (ESP_ARDUINO_VERSION_MAJOR == 3 && ESP_ARDUINO_VERSION_MINOR == 3 && ESP_ARDUINO_VERSION_PATCH < 12)
+#error "Install Espressif ESP32 Arduino core 3.3.12 or newer for verified hosted HTTPS."
+#endif
+
+// Hosted Flask application. Leave RFID_CLASS_NAME blank in rfid_config.h for
+// multi-class scanning and school-wide aggregate LCD totals.
+const char *RFID_ENDPOINT = "https://smart-management-school.onrender.com/student/rfid-login";
+const char *RFID_STATUS_ENDPOINT = "https://smart-management-school.onrender.com/student/rfid-status";
 
 
 // ESP32 DevKit + RC522 SPI reader.
@@ -39,6 +48,7 @@ constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long RFID_STATUS_POLL_MS = 30000;
 constexpr unsigned long LCD_IDLE_ROTATION_MS = 2800;
 constexpr uint8_t MAX_ABSENT_STUDENTS = 40;
+constexpr int RFID_ERROR_CLOCK_NOT_SYNCED = -1000;
 
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
@@ -55,6 +65,43 @@ int statusAbsentCount = 0;
 String statusClassName;
 String statusSummaryLine = "Attendance pending";
 String statusPollError;
+bool systemClockReady = false;
+unsigned long lastClockSyncAttemptAt = 0;
+
+bool synchronizeSystemClock() {
+  if (time(nullptr) >= 1700000000) {
+    systemClockReady = true;
+    return true;
+  }
+  if (lastClockSyncAttemptAt > 0 &&
+      millis() - lastClockSyncAttemptAt < WIFI_RETRY_INTERVAL_MS * 6) {
+    return false;
+  }
+  lastClockSyncAttemptAt = millis();
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
+  const unsigned long startedAt = millis();
+  while (time(nullptr) < 1700000000 && millis() - startedAt < 15000) {
+    delay(250);
+  }
+  systemClockReady = time(nullptr) >= 1700000000;
+  if (systemClockReady) {
+    Serial.println("System clock synchronized for HTTPS certificate checks.");
+  } else {
+    Serial.println("Clock sync failed; HTTPS requests are blocked until NTP succeeds.");
+  }
+  return systemClockReady;
+}
+
+String statusErrorLabel(int httpCode) {
+  if (httpCode == HTTP_CODE_UNAUTHORIZED) return "401: bad token";
+  if (httpCode == HTTP_CODE_FORBIDDEN) return "403: access";
+  if (httpCode == HTTP_CODE_NOT_FOUND) return "404: no API";
+  if (httpCode == HTTP_CODE_SERVICE_UNAVAILABLE) return "503: set token";
+  if (httpCode == HTTP_CODE_BAD_GATEWAY) return "502: host error";
+  if (httpCode == HTTP_CODE_GATEWAY_TIMEOUT) return "504: host timeout";
+  if (httpCode >= 100) return String("HTTP ") + httpCode;
+  return "HTTPS/network";
+}
 
 void setLeds(bool red, bool yellow, bool green) {
   digitalWrite(LED_RED_PIN, red ? HIGH : LOW);
@@ -101,35 +148,42 @@ bool refreshClassStatus() {
     Serial.println("Attendance status poll skipped: Wi-Fi is offline.");
     return false;
   }
+  if (!systemClockReady && !synchronizeSystemClock()) {
+    statusPollError = "Clock not synced";
+    return false;
+  }
   if (String(RFID_DEVICE_TOKEN).length() == 0 ||
       String(RFID_DEVICE_TOKEN).startsWith("SET_THE_SAME")) {
     statusPollError = "Set device token";
     Serial.println("Attendance status poll disabled: set RFID_DEVICE_TOKEN in the sketch and .env.");
     return false;
   }
-  WiFiClient client;
+  NetworkClientSecure client;
+  client.useBuiltinCACertBundle();
   HTTPClient http;
-  http.setConnectTimeout(3000);
-  http.setTimeout(5000);
+  http.setConnectTimeout(15000);
+  http.setTimeout(45000);
   String url = RFID_STATUS_ENDPOINT;
   if (String(RFID_CLASS_NAME).length() > 0) {
     url += "?class=" + urlEncode(RFID_CLASS_NAME);
   }
   if (!http.begin(client, url)) {
-    statusPollError = "Check server IP";
-    Serial.println("Attendance status poll failed: check RFID_STATUS_ENDPOINT and server IP.");
+    statusPollError = "HTTPS begin fail";
+    Serial.println("Attendance status poll failed to initialize HTTPS. Check the server URL and ESP32 board package.");
     return false;
   }
   http.addHeader("X-Device-Token", RFID_DEVICE_TOKEN);
   const int httpCode = http.GET();
   if (httpCode != HTTP_CODE_OK) {
     const String errorBody = http.getString();
-    statusPollError = httpCode == HTTP_CODE_UNAUTHORIZED ? "Bad device token" :
-                      httpCode == HTTP_CODE_FORBIDDEN ? "Class not allowed" :
-                      httpCode == HTTP_CODE_SERVICE_UNAVAILABLE ? "Server config" :
-                      "Check server/API";
-    Serial.printf("Class status request failed: HTTP %d: %s\n",
-                  httpCode, errorBody.c_str());
+    statusPollError = statusErrorLabel(httpCode);
+    if (httpCode < 0) {
+      Serial.printf("Class status HTTPS/network request failed: %s (%d): %s\n",
+                    http.errorToString(httpCode).c_str(), httpCode, errorBody.c_str());
+    } else {
+      Serial.printf("Class status request failed: HTTP %d: %s\n",
+                    httpCode, errorBody.c_str());
+    }
     http.end();
     return false;
   }
@@ -247,6 +301,7 @@ void beginWifi() {
     Serial.println(WiFi.localIP());
     showMessage("WiFi connected", WiFi.localIP().toString());
     setLeds(false, false, true);
+    synchronizeSystemClock();
     delay(1500);
     setLeds(false, false, false);
     showMessage("School RFID", "Tap student card");
@@ -259,6 +314,9 @@ void beginWifi() {
 
 void keepWifiConnected() {
   if (WiFi.status() == WL_CONNECTED) {
+    if (!systemClockReady) {
+      synchronizeSystemClock();
+    }
     return;
   }
 
@@ -273,11 +331,15 @@ int postRfidUid(const String &uid, String &responseBody) {
   if (WiFi.status() != WL_CONNECTED) {
     return -1;
   }
+  if (!systemClockReady && !synchronizeSystemClock()) {
+    return RFID_ERROR_CLOCK_NOT_SYNCED;
+  }
 
-  WiFiClient client;
+  NetworkClientSecure client;
+  client.useBuiltinCACertBundle();
   HTTPClient http;
-  http.setConnectTimeout(5000);
-  http.setTimeout(8000);
+  http.setConnectTimeout(15000);
+  http.setTimeout(45000);
 
   if (!http.begin(client, RFID_ENDPOINT)) {
     Serial.println("Could not start HTTP request. Check RFID_ENDPOINT.");
@@ -297,7 +359,8 @@ int postRfidUid(const String &uid, String &responseBody) {
   if (httpCode > 0) {
     responseBody = http.getString();
   } else {
-    Serial.printf("HTTP request failed: %s\n", http.errorToString(httpCode).c_str());
+    Serial.printf("HTTPS RFID request failed: %s (%d)\n",
+                  http.errorToString(httpCode).c_str(), httpCode);
   }
   http.end();
   return httpCode;
@@ -308,7 +371,11 @@ void showServerResult(int httpCode, const String &responseBody) {
 
   if (httpCode <= 0) {
     setLeds(true, false, false);
-    showMessage("Server error", "Check WiFi/IP");
+    if (httpCode == RFID_ERROR_CLOCK_NOT_SYNCED) {
+      showMessage("Clock not synced", "Check NTP/WiFi");
+    } else {
+      showMessage("HTTPS/network", "See Serial log");
+    }
     return;
   }
 
@@ -316,7 +383,11 @@ void showServerResult(int httpCode, const String &responseBody) {
   const DeserializationError parseError = deserializeJson(result, responseBody);
   if (parseError) {
     setLeds(true, false, false);
-    showMessage("Bad server reply", "See Serial log");
+    if (httpCode > 0) {
+      showMessage("Server HTTP error", String("Code ") + httpCode);
+    } else {
+      showMessage("Bad server reply", "See Serial log");
+    }
     return;
   }
 

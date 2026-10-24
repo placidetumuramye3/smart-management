@@ -9,12 +9,12 @@ def upgrade(connection):
     if inspector.has_table("user"):
         user_columns = {column["name"] for column in inspector.get_columns("user")}
         if "department" not in user_columns:
-            connection.execute(text("ALTER TABLE user ADD COLUMN department VARCHAR(100)"))
+            connection.execute(text('ALTER TABLE "user" ADD COLUMN department VARCHAR(100)'))
         if "class_section" not in user_columns:
-            connection.execute(text("ALTER TABLE user ADD COLUMN class_section VARCHAR(50)"))
+            connection.execute(text('ALTER TABLE "user" ADD COLUMN class_section VARCHAR(50)'))
         if "trade" in user_columns:
             connection.execute(text(
-                "UPDATE user SET department = trade "
+                'UPDATE "user" SET department = trade '
                 "WHERE role = 'student' AND (department IS NULL OR TRIM(department) = '') "
                 "AND trade IS NOT NULL AND TRIM(trade) != ''"
             ))

@@ -11,12 +11,12 @@ with app.app_context():
     # Upgrade existing SQLite databases without requiring an external migration tool.
     user_columns = {column["name"] for column in inspect(db.engine).get_columns("user")}
     if "sdms_code" not in user_columns:
-        db.session.execute(text("ALTER TABLE user ADD COLUMN sdms_code VARCHAR(32)"))
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN sdms_code VARCHAR(32)'))
         db.session.commit()
     if "profile_photo" not in user_columns:
-        db.session.execute(text("ALTER TABLE user ADD COLUMN profile_photo VARCHAR(255)"))
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN profile_photo VARCHAR(255)'))
         db.session.commit()
-    db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_user_sdms_code ON user (sdms_code)"))
+    db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ux_user_sdms_code ON "user" (sdms_code)'))
     db.session.commit()
     for student in User.query.filter_by(role="student", sdms_code=None).all():
         student.sdms_code = generate_sdms_code()
@@ -25,7 +25,7 @@ with app.app_context():
     if "remarks" not in grade_columns:
         db.session.execute(text("ALTER TABLE grade ADD COLUMN remarks TEXT"))
     if "is_published" not in grade_columns:
-        db.session.execute(text("ALTER TABLE grade ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT 0"))
+        db.session.execute(text("ALTER TABLE grade ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT FALSE"))
     db.session.commit()
     fee_columns = {column["name"] for column in inspect(db.engine).get_columns("fee_transaction")}
     if "requirement_id" not in fee_columns:
@@ -39,7 +39,7 @@ with app.app_context():
     if "record_type" not in discipline_columns:
         db.session.execute(text("ALTER TABLE discipline_case ADD COLUMN record_type VARCHAR(30) NOT NULL DEFAULT 'Concern'"))
     if "is_published" not in discipline_columns:
-        db.session.execute(text("ALTER TABLE discipline_case ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT 0"))
+        db.session.execute(text("ALTER TABLE discipline_case ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT FALSE"))
     db.session.commit()
     grade_columns = {column["name"] for column in inspect(db.engine).get_columns("grade")}
     grade_additions = {

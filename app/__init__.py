@@ -89,7 +89,7 @@ def create_app(config_class=Config):
                 ("emergency_contact_relationship", "VARCHAR(80)"),
             ):
                 if column_name not in user_columns:
-                    db.session.execute(text(f"ALTER TABLE user ADD COLUMN {column_name} {column_type}"))
+                    db.session.execute(text(f'ALTER TABLE "user" ADD COLUMN {column_name} {column_type}'))
             if any(name not in user_columns for name in (
                 "date_of_birth", "gender", "academic_year", "guardian_name",
                 "guardian_relationship", "guardian_phone", "address",
