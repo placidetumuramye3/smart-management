@@ -153,6 +153,9 @@ def rfid_login():
     if student and student.is_active_account is False:
         return jsonify(
             status="student_inactive",
+            student=student.full_name,
+            attendance_status="Inactive",
+            timestamp=stamp,
             message="This student's account is archived. Contact the school office.",
         ), 403
     if not student:
@@ -263,6 +266,7 @@ def rfid_login():
                        message=f"{student.full_name}: {row.status} recorded at {stamp}.")
 
     if in_afternoon_window:
+        new_afternoon_scan = not row or not row.afternoon_time
         if not row:
             row = Attendance(
                 student_id=student.id,
@@ -272,12 +276,13 @@ def rfid_login():
                 note="Afternoon RFID scan recorded; attendance remains Absent because the 15-minute morning late-arrival grace period ended.",
             )
             db.session.add(row)
-            notify_class_attendance(student, "Absent", today, stamp)
         elif row.status == "Absent":
             if row.note and row.note.startswith("Automatically marked absent"):
                 row.note = f"Afternoon RFID scan recorded at {stamp}; attendance remains Absent because the 15-minute morning late-arrival grace period ended."
             row.source = "RFID"
         row.afternoon_time = stamp
+        if new_afternoon_scan:
+            notify_class_attendance(student, row.status, today, stamp, session="afternoon")
         reconcile_daily_absences(now=now, exclude_student_ids={student.id})
         db.session.commit()
         return jsonify(status="success", student=student.full_name, attendance_status=row.status,

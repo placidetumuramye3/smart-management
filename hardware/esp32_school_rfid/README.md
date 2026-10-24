@@ -13,6 +13,8 @@ The app records attendance for a registered student and queues an unknown UID fo
 
 The server's configured attendance times are authoritative. `late_after` is the allowed-time end: scans through one minute after it are Present; scans more than one minute and up to 15 minutes after it are Late. If no scan arrives by the end of the 15-minute grace, the student is saved as Absent. After that grace, the attendance endpoint returns Access Denied and the card scan is not recorded as an arrival; the separate afternoon scan window remains available. The LCD shows the status returned by the server, and the red LED lights for Access Denied. Each card scan is matched to its registered student, so the LCD also shows that student's own class attendance summary after accepted scans. The attendance register and Excel export show the full date/time for accepted scans, including legacy rows that stored only the clock time. The ESP32 checks the attendance-status endpoint immediately after connecting and every 30 seconds after that; each successful check reconciles absences and queues in-app alerts for newly absent students, guardians, and authorized staff.
 
+Archived students keep their RFID UID reserved, but scans return `student_inactive` and do not create attendance. The LCD shows `INACTIVE: OFFICE`. A first accepted morning or afternoon scan creates in-app notifications for that student, linked guardians, and authorized staff; parent email or SMS delivery depends on notification preferences and configured providers.
+
 ## Assumed hardware
 
 - ESP32 DevKit
@@ -49,11 +51,13 @@ LCD backpacks commonly use address `0x27`; some use `0x3F`. Change `LCD_ADDRESS`
 
 1. Install the Espressif ESP32 board package in Arduino IDE.
 2. Install these libraries from Library Manager: **MFRC522**, **LiquidCrystal I2C**, and **ArduinoJson**.
-3. Open `esp32_school_rfid.ino` and set `WIFI_SSID`, `WIFI_PASSWORD`, and `RFID_DEVICE_TOKEN`. Keep `RFID_CLASS_NAME` empty to accept cards from every class.
+3. Open `esp32_school_rfid.ino` and set `WIFI_SSID`, `WIFI_PASSWORD`, and `RFID_DEVICE_TOKEN`. Keep `RFID_CLASS_NAME` empty to accept cards from every class. This is the only active `.ino` sketch in the folder; `esp32_school_rfid123.ino.disabled` is an older backup and must not be renamed to `.ino` while compiling this sketch.
 4. Find the computer's LAN IPv4 address with `ipconfig`. Replace `192.168.1.50` in both `RFID_ENDPOINT` and `RFID_STATUS_ENDPOINT` with that address. Keep port `5000` and the existing endpoint paths.
 5. Set a long random `RFID_DEVICE_TOKEN` in `.env` and use the same token in the firmware. Leave `RFID_DEVICE_CLASS` blank for multi-class operation; each card scan is matched to its registered student and returns that student's own class. The idle status poll then returns school-wide totals without exposing a list of absent names. To restrict a reader to one class and show that class's absent names, set the same exact class in both `RFID_DEVICE_CLASS` and `RFID_CLASS_NAME`. The token authenticates both card scans and status polls. Do not commit or share the real token. Use the plain HTTP endpoints only on a trusted school LAN; production use should be HTTPS.
 6. Keep the ESP32 and Flask server on the same trusted Wi-Fi/LAN. Start the app with `python run.py`; the current launcher listens on port 5000. Allow private-network access through the computer firewall if prompted.
 7. Select the matching ESP32 board and port, upload, and open Serial Monitor at `115200` baud.
+
+The firmware sends the uppercase, zero-padded UID as JSON to Flask, prints the request and complete HTTP response in Serial Monitor, and displays the attendance status returned by Flask on the LCD. It ignores a repeat of the same UID for 10 seconds after the response display finishes.
 
 Do not use `localhost` or `127.0.0.1` in `RFID_ENDPOINT`: those addresses would point to the ESP32 itself. This sketch uses plain HTTP for a trusted local network. Do not expose port 5000 to the public internet; production deployment should use HTTPS and device authentication.
 

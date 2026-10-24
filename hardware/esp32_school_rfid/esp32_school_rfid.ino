@@ -34,7 +34,7 @@ constexpr uint8_t LED_RED_PIN = 25;
 constexpr uint8_t LED_YELLOW_PIN = 26;
 constexpr uint8_t LED_GREEN_PIN = 27;
 
-constexpr unsigned long CARD_REPEAT_GUARD_MS = 4000;
+constexpr unsigned long CARD_REPEAT_GUARD_MS = 10000;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long RFID_STATUS_POLL_MS = 30000;
 constexpr unsigned long LCD_IDLE_ROTATION_MS = 2800;
@@ -286,8 +286,12 @@ int postRfidUid(const String &uid, String &responseBody) {
 
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Token", RFID_DEVICE_TOKEN);
-  const String payload = String("{\"uid\":\"") + uid + "\"}";
-  Serial.printf("POST %s  UID=%s\n", RFID_ENDPOINT, uid.c_str());
+  StaticJsonDocument<96> requestDocument;
+  requestDocument["uid"] = uid;
+  String payload;
+  serializeJson(requestDocument, payload);
+  Serial.printf("[RFID] POST %s\n", RFID_ENDPOINT);
+  Serial.printf("[RFID] Request JSON: %s\n", payload.c_str());
 
   const int httpCode = http.POST(payload);
   if (httpCode > 0) {
@@ -300,7 +304,7 @@ int postRfidUid(const String &uid, String &responseBody) {
 }
 
 void showServerResult(int httpCode, const String &responseBody) {
-  Serial.printf("HTTP %d: %s\n", httpCode, responseBody.c_str());
+  Serial.printf("[RFID] HTTP %d response:\n%s\n", httpCode, responseBody.c_str());
 
   if (httpCode <= 0) {
     setLeds(true, false, false);
@@ -328,6 +332,13 @@ void showServerResult(int httpCode, const String &responseBody) {
     setLeds(true, false, false);
     showMessage("Device not auth", "Check token");
     Serial.println("RFID scan rejected: configure the same RFID_DEVICE_TOKEN on the server and ESP32.");
+    return;
+  }
+
+  if (status == "student_inactive") {
+    setLeds(true, false, false);
+    showMessage(student.length() > 0 ? student : "Student account", "INACTIVE: OFFICE");
+    Serial.println("RFID scan denied: this card belongs to an archived student account.");
     return;
   }
 
@@ -460,6 +471,7 @@ void loop() {
     setLeds(true, false, false);
     showMessage("Card read", "WiFi offline");
     delay(1800);
+    lastUidReadAt = millis();
     showMessage("School RFID", "Tap student card");
     return;
   }
@@ -469,6 +481,9 @@ void loop() {
   String responseBody;
   const int httpCode = postRfidUid(uid, responseBody);
   showServerResult(httpCode, responseBody);
+  // Start the repeat guard after the response has finished displaying so a held
+  // or immediately re-tapped card cannot flood the Flask endpoint.
+  lastUidReadAt = millis();
 
   setLeds(false, false, false);
   lastIdleRenderAt = 0;

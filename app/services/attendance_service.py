@@ -191,10 +191,16 @@ def attendance_staff_ids_for_class(class_name):
     return staff_ids
 
 
-def notify_class_attendance(student, status, day, recorded_at=None):
-    """Send one attendance event to the class team and relevant family accounts."""
+def notify_class_attendance(student, status, day, recorded_at=None, session="morning"):
+    """Notify class staff, the student, and verified guardians of a recorded scan."""
     class_label = student.class_name or "Unassigned class"
-    if status == "Absent":
+    if session == "afternoon":
+        title = f"Afternoon scan recorded: {student.full_name}"
+        detail = f"{student.full_name} ({class_label}) had an afternoon RFID scan on {day}."
+        if recorded_at:
+            detail += f" Time recorded: {recorded_at}."
+        detail += f" Morning attendance remains {status}."
+    elif status == "Absent":
         title = f"Absence recorded: {student.full_name}"
     elif status == "Late":
         title = f"Late arrival: {student.full_name}"
@@ -208,9 +214,7 @@ def notify_class_attendance(student, status, day, recorded_at=None):
         detail += f" Time recorded: {recorded_at}."
     notify_users(attendance_staff_ids_for_class(student.class_name),
                  "Attendance", title, detail, "/attendance")
-
-    if status in {"Absent", "Late"}:
-        notify_student_and_parent(student, "Attendance", "Attendance alert", detail, "/attendance")
+    notify_student_and_parent(student, "Attendance", title, detail, "/attendance")
 
 
 def reconcile_daily_absences(now=None, exclude_student_ids=None):

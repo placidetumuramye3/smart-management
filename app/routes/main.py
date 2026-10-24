@@ -1,7 +1,7 @@
 import os
 import datetime
 import json
-from flask import request, redirect, url_for, flash, jsonify, abort, send_file, current_app
+from flask import request, redirect, url_for, flash, jsonify, abort, send_from_directory, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 from openpyxl import Workbook
@@ -13,10 +13,22 @@ from app.utils.helpers import get_setting, set_setting, attendance_for_student
 from app.utils.rendering import page
 
 def school_logo():
-    filename = get_setting("school_logo", "logo.png")
-    path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
-    if os.path.isfile(path):
-        return send_file(path)
+    upload_folder = current_app.config["UPLOAD_FOLDER"]
+    configured_filename = get_setting("school_logo", "").strip()
+    if configured_filename:
+        # Logo settings are filenames, never paths. Keep legacy/custom uploads
+        # working while preventing a stale or malformed setting from breaking
+        # the bundled school logo fallback.
+        filename = secure_filename(os.path.basename(configured_filename))
+        if filename and os.path.isfile(os.path.join(upload_folder, filename)):
+            return send_from_directory(upload_folder, filename)
+
+    # The school's bundled crest lives in app/static/images. The former
+    # default (logo.png) does not exist, which caused /school-logo to return
+    # 404 on a fresh database or when a previously uploaded logo was removed.
+    fallback_filename = "school_logo.jpg"
+    if os.path.isfile(os.path.join(upload_folder, fallback_filename)):
+        return send_from_directory(upload_folder, fallback_filename)
     abort(404)
 
 def home():
