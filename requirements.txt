@@ -8,3 +8,4 @@ psycopg[binary]>=3.2,<4
 qrcode>=7.4
 msal>=1.28
 pytest>=8.0
+gunicorn==23.0.0
