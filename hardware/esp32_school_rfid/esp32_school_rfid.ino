@@ -342,6 +342,13 @@ void showServerResult(int httpCode, const String &responseBody) {
     return;
   }
 
+  if (status == "class_not_allowed") {
+    setLeds(true, false, false);
+    showMessage("Class not allowed", "Check reader setup");
+    Serial.println("RFID scan rejected: student's class is outside RFID_DEVICE_CLASS on the server.");
+    return;
+  }
+
   if (status == "success" || status == "meeting_checkin") {
     if (attendance == "Present") {
       setLeds(false, false, true);

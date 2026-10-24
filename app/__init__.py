@@ -13,6 +13,7 @@ from migrations.versions.v20261023_05_add_meeting_room_checkin import upgrade as
 from migrations.versions.v20261023_06_add_microsoft_meeting_sync import upgrade as upgrade_microsoft_meeting_sync
 from migrations.versions.v20261023_07_add_panel_discussion_format import upgrade as upgrade_panel_discussion_format
 from migrations.versions.v20261024_01_add_department_and_class_section import upgrade as upgrade_department_and_class_section
+from migrations.versions.v20261024_02_fix_official_notice_boolean_defaults import upgrade as upgrade_official_notice_boolean_defaults
 
 def create_app(config_class=Config):
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -55,6 +56,7 @@ def create_app(config_class=Config):
             upgrade_microsoft_meeting_sync(connection)
             upgrade_panel_discussion_format(connection)
             upgrade_department_and_class_section(connection)
+            upgrade_official_notice_boolean_defaults(connection)
         if inspect(db.engine).has_table("user"):
             db.metadata.create_all(
                 bind=db.engine,

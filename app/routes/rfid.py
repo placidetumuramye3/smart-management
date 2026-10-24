@@ -158,6 +158,12 @@ def rfid_login():
             timestamp=stamp,
             message="This student's account is archived. Contact the school office.",
         ), 403
+    allowed_class = str(current_app.config.get("RFID_DEVICE_CLASS", "") or "").strip()
+    if student and allowed_class and (student.class_name or "").strip().casefold() != allowed_class.casefold():
+        return jsonify(
+            status="class_not_allowed",
+            message="This RFID reader is not authorized for the student's class.",
+        ), 403
     if not student:
         pending = PendingCard.query.filter_by(uid=uid).first()
         if pending and pending.state == "Lost":

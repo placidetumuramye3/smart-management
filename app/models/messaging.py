@@ -1,5 +1,5 @@
 from app.extensions import db
-from sqlalchemy import text
+from sqlalchemy import false, text
 
 
 class SchoolMessage(db.Model):
@@ -113,11 +113,11 @@ class OfficialNoticePermission(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
-    can_create = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
-    can_approve = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
-    can_approve_sensitive = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
-    can_publish = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
-    can_revoke = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
+    can_create = db.Column(db.Boolean, nullable=False, default=False, server_default=false())
+    can_approve = db.Column(db.Boolean, nullable=False, default=False, server_default=false())
+    can_approve_sensitive = db.Column(db.Boolean, nullable=False, default=False, server_default=false())
+    can_publish = db.Column(db.Boolean, nullable=False, default=False, server_default=false())
+    can_revoke = db.Column(db.Boolean, nullable=False, default=False, server_default=false())
     updated_by_id = db.Column(db.Integer)
     updated_by_name = db.Column(db.String(160))
     updated_at = db.Column(db.String(19))
@@ -136,7 +136,7 @@ class OfficialNotice(db.Model):
     body = db.Column(db.Text, nullable=False)
     recipient_ids_json = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(40), nullable=False, default="general", server_default=text("'general'"))
-    is_sensitive = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
+    is_sensitive = db.Column(db.Boolean, nullable=False, default=False, server_default=false())
     status = db.Column(db.String(32), nullable=False, default="pending_approval", server_default=text("'pending_approval'"), index=True)
     created_at = db.Column(db.String(19), nullable=False)
     approved_by_id = db.Column(db.Integer)
